@@ -1,0 +1,10 @@
+services:
+  Dbp\Relay\PortfolioBundle\Rest\:
+    resource: '../../Rest'
+    autowire: true
+    autoconfigure: true
+
+  Dbp\Relay\PortfolioBundle\Service\:
+    resource: '../../Service'
+    autowire: true
+    autoconfigure: true
