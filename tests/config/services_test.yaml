@@ -1,0 +1,3 @@
+services:
+    Dbp\Relay\PortfolioBundle\Tests\DummyWorkflowTypeHandler:
+        autoconfigure: true

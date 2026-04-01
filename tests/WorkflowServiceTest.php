@@ -1,0 +1,212 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Dbp\Relay\PortfolioBundle\Tests;
+
+use Dbp\Relay\PortfolioBundle\Persistence\WorkflowPersistence;
+use Dbp\Relay\PortfolioBundle\Service\WorkflowService;
+use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
+
+class WorkflowServiceTest extends AbstractTestCase
+{
+    private WorkflowService $service;
+    private DummyWorkflowTypeHandler $dummyHandler;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->service = $this->container->get(WorkflowService::class);
+        $this->dummyHandler = $this->container->get(DummyWorkflowTypeHandler::class);
+    }
+
+    // -------------------------------------------------------------------------
+    // createWorkflow
+    // -------------------------------------------------------------------------
+
+    public function testCreateWorkflow(): void
+    {
+        $workflow = $this->service->createWorkflow(DummyWorkflowTypeHandler::TYPE, ['key' => 'val']);
+
+        $this->assertNotEmpty($workflow->getId());
+        $this->assertSame(DummyWorkflowTypeHandler::TYPE, $workflow->getType());
+        $this->assertSame(WorkflowPersistence::STATE_ACTIVE, $workflow->getState());
+        $this->assertSame(['key' => 'val'], $workflow->getCustomState());
+    }
+
+    public function testCreateWorkflowReconcilesTasks(): void
+    {
+        // DummyWorkflowTypeHandler returns one task while active
+        $workflow = $this->service->createWorkflow(DummyWorkflowTypeHandler::TYPE, []);
+
+        $tasks = $this->service->getTasksForWorkflow($workflow->getId(), 1, 10);
+        $this->assertCount(1, $tasks);
+        $this->assertSame('task-'.$workflow->getId(), $tasks[0]->getId());
+    }
+
+    // -------------------------------------------------------------------------
+    // getWorkflow
+    // -------------------------------------------------------------------------
+
+    public function testGetWorkflowNotFound(): void
+    {
+        $this->assertNull($this->service->getWorkflow('no-such-id'));
+    }
+
+    public function testGetWorkflow(): void
+    {
+        $this->testEntityManager->addWorkflow('wf-1', DummyWorkflowTypeHandler::TYPE);
+
+        $workflow = $this->service->getWorkflow('wf-1');
+        $this->assertNotNull($workflow);
+        $this->assertSame('wf-1', $workflow->getId());
+    }
+
+    // -------------------------------------------------------------------------
+    // getWorkflows
+    // -------------------------------------------------------------------------
+
+    public function testGetWorkflowsEmpty(): void
+    {
+        $this->assertSame([], $this->service->getWorkflows(1, 10));
+    }
+
+    public function testGetWorkflows(): void
+    {
+        $this->testEntityManager->addWorkflow('wf-1', DummyWorkflowTypeHandler::TYPE);
+        $this->testEntityManager->addWorkflow('wf-2', DummyWorkflowTypeHandler::TYPE);
+
+        $this->assertCount(2, $this->service->getWorkflows(1, 10));
+    }
+
+    // -------------------------------------------------------------------------
+    // handleAction
+    // -------------------------------------------------------------------------
+
+    public function testHandleActionWorkflowNotFound(): void
+    {
+        $this->expectException(NotFoundHttpException::class);
+        $this->service->handleAction('no-such-id', DummyWorkflowTypeHandler::ACTION_PROCEED, []);
+    }
+
+    public function testHandleActionUnavailableAction(): void
+    {
+        $this->testEntityManager->addWorkflow('wf-1', DummyWorkflowTypeHandler::TYPE);
+
+        $this->expectException(BadRequestHttpException::class);
+        $this->service->handleAction('wf-1', 'unknown-action', []);
+    }
+
+    public function testHandleActionUpdatesWorkflowState(): void
+    {
+        $this->testEntityManager->addWorkflow('wf-1', DummyWorkflowTypeHandler::TYPE);
+
+        $result = $this->service->handleAction('wf-1', DummyWorkflowTypeHandler::ACTION_PROCEED, []);
+
+        $this->assertSame(WorkflowPersistence::STATE_DONE, $result->getState());
+        $this->assertSame(['step' => 'done'], $result->getCustomState());
+        $this->assertSame(['next' => '/some/url'], $result->getResponseData());
+
+        $workflow = $this->service->getWorkflow('wf-1');
+        $this->assertSame(WorkflowPersistence::STATE_DONE, $workflow->getState());
+        $this->assertSame(['step' => 'done'], $workflow->getCustomState());
+    }
+
+    public function testHandleActionReconcilesTasks(): void
+    {
+        // Start with an active workflow and a pre-existing task
+        $workflow = $this->testEntityManager->addWorkflow('wf-1', DummyWorkflowTypeHandler::TYPE);
+        $this->testEntityManager->addTask('task-wf-1', $workflow);
+
+        // Proceed → done: handler returns no tasks for done state, so existing task is deleted
+        $this->service->handleAction('wf-1', DummyWorkflowTypeHandler::ACTION_PROCEED, []);
+
+        $tasks = $this->service->getTasksForWorkflow('wf-1', 1, 10);
+        $this->assertCount(0, $tasks);
+    }
+
+    public function testHandleActionCancel(): void
+    {
+        $this->testEntityManager->addWorkflow('wf-1', DummyWorkflowTypeHandler::TYPE);
+
+        $result = $this->service->handleAction('wf-1', DummyWorkflowTypeHandler::ACTION_CANCEL, []);
+        $this->assertSame(WorkflowPersistence::STATE_CANCELLED, $result->getState());
+
+        $workflow = $this->service->getWorkflow('wf-1');
+        $this->assertSame(WorkflowPersistence::STATE_CANCELLED, $workflow->getState());
+    }
+
+    // -------------------------------------------------------------------------
+    // getTask / getTasksForWorkflow
+    // -------------------------------------------------------------------------
+
+    public function testGetTaskNotFound(): void
+    {
+        $this->assertNull($this->service->getTask('no-such-task'));
+    }
+
+    public function testGetTask(): void
+    {
+        $workflow = $this->testEntityManager->addWorkflow('wf-1', DummyWorkflowTypeHandler::TYPE);
+        $this->testEntityManager->addTask('t-1', $workflow);
+
+        $task = $this->service->getTask('t-1');
+        $this->assertNotNull($task);
+        $this->assertSame('t-1', $task->getId());
+    }
+
+    public function testGetTasksForWorkflowNotFound(): void
+    {
+        $this->expectException(NotFoundHttpException::class);
+        $this->service->getTasksForWorkflow('no-such-id', 1, 10);
+    }
+
+    public function testGetTasksForWorkflow(): void
+    {
+        $workflow = $this->testEntityManager->addWorkflow('wf-1', DummyWorkflowTypeHandler::TYPE);
+        $this->testEntityManager->addTask('t-1', $workflow);
+        $this->testEntityManager->addTask('t-2', $workflow);
+
+        $tasks = $this->service->getTasksForWorkflow('wf-1', 1, 10);
+        $this->assertCount(2, $tasks);
+    }
+
+    public function testGetTaskResponse(): void
+    {
+        $workflow = $this->testEntityManager->addWorkflow('wf-1', DummyWorkflowTypeHandler::TYPE);
+        $task = $this->testEntityManager->addTask('t-1', $workflow);
+
+        $data = $this->service->getTaskResponse($task);
+        $this->assertSame(['info' => 'computed from wf-1'], $data);
+    }
+
+    // -------------------------------------------------------------------------
+    // pingAll
+    // -------------------------------------------------------------------------
+
+    public function testPingAllCallsHandlerForActiveWorkflows(): void
+    {
+        $this->testEntityManager->addWorkflow('wf-active', DummyWorkflowTypeHandler::TYPE, WorkflowPersistence::STATE_ACTIVE);
+        $this->testEntityManager->addWorkflow('wf-done', DummyWorkflowTypeHandler::TYPE, WorkflowPersistence::STATE_DONE);
+        $this->testEntityManager->addWorkflow('wf-cancelled', DummyWorkflowTypeHandler::TYPE, WorkflowPersistence::STATE_CANCELLED);
+
+        $this->service->pingAll();
+
+        $this->assertSame(1, $this->dummyHandler->pingCallCount);
+    }
+
+    public function testPingAllReconcilesTasks(): void
+    {
+        // Active workflow — ping returns null (no state change) but reconciliation still runs
+        $workflow = $this->testEntityManager->addWorkflow('wf-1', DummyWorkflowTypeHandler::TYPE);
+
+        $this->service->pingAll();
+
+        // DummyWorkflowTypeHandler returns ['task-wf-1'] for active workflows
+        $tasks = $this->service->getTasksForWorkflow('wf-1', 1, 10);
+        $this->assertCount(1, $tasks);
+        $this->assertSame('task-'.$workflow->getId(), $tasks[0]->getId());
+    }
+}

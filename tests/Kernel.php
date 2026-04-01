@@ -7,6 +7,8 @@ namespace Dbp\Relay\PortfolioBundle\Tests;
 use ApiPlatform\Symfony\Bundle\ApiPlatformBundle;
 use Dbp\Relay\CoreBundle\DbpRelayCoreBundle;
 use Dbp\Relay\PortfolioBundle\DbpRelayPortfolioBundle;
+use Doctrine\Bundle\DoctrineBundle\DoctrineBundle;
+use Doctrine\Bundle\MigrationsBundle\DoctrineMigrationsBundle;
 use Nelmio\CorsBundle\NelmioCorsBundle;
 use Symfony\Bundle\FrameworkBundle\FrameworkBundle;
 use Symfony\Bundle\FrameworkBundle\Kernel\MicroKernelTrait;
@@ -29,17 +31,19 @@ class Kernel extends BaseKernel
         yield new TwigBundle();
         yield new NelmioCorsBundle();
         yield new MonologBundle();
+        yield new DoctrineBundle();
+        yield new DoctrineMigrationsBundle();
         yield new ApiPlatformBundle();
         yield new DbpRelayPortfolioBundle();
         yield new DbpRelayCoreBundle();
     }
 
-    protected function configureRoutes(RoutingConfigurator $routes)
+    protected function configureRoutes(RoutingConfigurator $routes): void
     {
         $routes->import('@DbpRelayCoreBundle/Resources/config/routing.yaml');
     }
 
-    protected function configureContainer(ContainerConfigurator $container, LoaderInterface $loader)
+    protected function configureContainer(ContainerConfigurator $container, LoaderInterface $loader): void
     {
         $container->import('@DbpRelayCoreBundle/Resources/config/services_test.yaml');
         $container->extension('framework', [
@@ -48,6 +52,15 @@ class Kernel extends BaseKernel
             'annotations' => false,
         ]);
 
-        $container->extension('dbp_relay_portfolio', []);
+        $container->extension('dbp_relay_portfolio', [
+            'database_url' => 'sqlite:///:memory:',
+            'authorization' => [
+                'roles' => [
+                    'ROLE_USER' => 'true',
+                ],
+            ],
+        ]);
+
+        $container->import('../tests/config/services_test.yaml');
     }
 }
