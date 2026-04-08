@@ -70,10 +70,11 @@ class WorkflowService
     /**
      * @return WorkflowPersistence[]
      */
-    public function getWorkflows(int $currentPageNumber, int $maxNumItemsPerPage): array
+    public function getWorkflows(int $currentPageNumber, int $maxNumItemsPerPage, ?string $type = null): array
     {
+        $criteria = $type !== null ? ['type' => $type] : [];
         $workflows = $this->em->getRepository(WorkflowPersistence::class)
-            ->findBy([], ['createdAt' => 'DESC'], $maxNumItemsPerPage, ($currentPageNumber - 1) * $maxNumItemsPerPage);
+            ->findBy($criteria, ['createdAt' => 'DESC'], $maxNumItemsPerPage, ($currentPageNumber - 1) * $maxNumItemsPerPage);
 
         return array_values(array_filter($workflows, fn ($w) => $this->canView($w)));
     }

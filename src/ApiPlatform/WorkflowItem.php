@@ -9,6 +9,7 @@ use ApiPlatform\Metadata\ApiResource;
 use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\OpenApi\Model\Operation;
+use ApiPlatform\OpenApi\Model\Parameter;
 use Dbp\Relay\CoreBundle\Serializer\DateTimeUtcNormalizer;
 use Symfony\Component\Serializer\Annotation\Groups;
 use Symfony\Component\Serializer\Attribute\Context;
@@ -23,7 +24,18 @@ use Symfony\Component\Serializer\Attribute\Context;
         ),
         new GetCollection(
             uriTemplate: '/portfolio/workflows',
-            openapi: new Operation(tags: ['Portfolio']),
+            openapi: new Operation(
+                tags: ['Portfolio'],
+                parameters: [
+                    new Parameter(
+                        name: 'type',
+                        in: 'query',
+                        description: 'Filter workflows by type.',
+                        required: false,
+                        schema: ['type' => 'string'],
+                    ),
+                ],
+            ),
             provider: WorkflowProvider::class,
         ),
     ],

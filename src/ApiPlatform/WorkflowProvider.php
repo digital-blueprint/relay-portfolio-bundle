@@ -43,7 +43,8 @@ class WorkflowProvider extends AbstractDataProvider
     {
         $this->authorizationService->checkCanUse();
 
-        $workflows = $this->workflowService->getWorkflows($currentPageNumber, $maxNumItemsPerPage);
+        $type = $filters['type'] ?? null;
+        $workflows = $this->workflowService->getWorkflows($currentPageNumber, $maxNumItemsPerPage, $type);
 
         return array_map(fn (WorkflowPersistence $w) => $this->toWorkflowItem($w, includeHandlerData: true), $workflows);
     }
