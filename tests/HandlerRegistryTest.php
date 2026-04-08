@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Dbp\Relay\PortfolioBundle\Tests;
 
+use Dbp\Relay\PortfolioBundle\ApiPlatform\WorkflowResultMessage;
 use Dbp\Relay\PortfolioBundle\Handler\StateDisplay;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowActionResult;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowTypeHandlerRegistry;
@@ -72,15 +73,21 @@ class HandlerRegistryTest extends TestCase
 
     public function testWorkflowActionResult(): void
     {
+        $message = new WorkflowResultMessage(
+            type: WorkflowResultMessage::TYPE_WARNING,
+            title: 'Heads up',
+            text: 'Something to note.',
+        );
+
         $result = new WorkflowActionResult(
             customState: ['key' => 'val'],
             state: WorkflowPersistence::STATE_DONE,
-            responseData: ['url' => '/next'],
+            message: $message,
         );
 
         $this->assertSame(['key' => 'val'], $result->getCustomState());
         $this->assertSame(WorkflowPersistence::STATE_DONE, $result->getState());
-        $this->assertSame(['url' => '/next'], $result->getResponseData());
+        $this->assertSame($message, $result->getMessage());
     }
 
     public function testWorkflowActionResultDefaults(): void
@@ -88,6 +95,19 @@ class HandlerRegistryTest extends TestCase
         $result = new WorkflowActionResult(customState: []);
 
         $this->assertNull($result->getState());
-        $this->assertSame([], $result->getResponseData());
+        $this->assertNull($result->getMessage());
+    }
+
+    public function testWorkflowResultMessage(): void
+    {
+        $msg = new WorkflowResultMessage(
+            type: WorkflowResultMessage::TYPE_ERROR,
+            title: 'Something went wrong',
+            text: 'Please try again later.',
+        );
+
+        $this->assertSame(WorkflowResultMessage::TYPE_ERROR, $msg->getType());
+        $this->assertSame('Something went wrong', $msg->getTitle());
+        $this->assertSame('Please try again later.', $msg->getText());
     }
 }

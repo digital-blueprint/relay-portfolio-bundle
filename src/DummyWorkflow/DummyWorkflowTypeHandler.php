@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Dbp\Relay\PortfolioBundle\DummyWorkflow;
 
+use Dbp\Relay\PortfolioBundle\ApiPlatform\WorkflowResultMessage;
 use Dbp\Relay\PortfolioBundle\Handler\Action;
 use Dbp\Relay\PortfolioBundle\Handler\StateDisplay;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowActionResult;
@@ -87,6 +88,11 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
         return new WorkflowActionResult(
             customState: $customState,
             state: WorkflowPersistence::STATE_DONE,
+            message: new WorkflowResultMessage(
+                type: WorkflowResultMessage::TYPE_SUCCESS,
+                title: 'Workflow completed',
+                text: 'The workflow has been completed successfully.',
+            ),
         );
     }
 

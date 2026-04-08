@@ -7,6 +7,7 @@ namespace Dbp\Relay\PortfolioBundle\Tests;
 use Dbp\Relay\CoreBundle\TestUtils\DataProcessorTester;
 use Dbp\Relay\PortfolioBundle\ApiPlatform\WorkflowAction;
 use Dbp\Relay\PortfolioBundle\ApiPlatform\WorkflowActionProcessor;
+use Dbp\Relay\PortfolioBundle\ApiPlatform\WorkflowResultMessage;
 use Dbp\Relay\PortfolioBundle\Authorization\AuthorizationService;
 use Dbp\Relay\PortfolioBundle\Persistence\WorkflowPersistence;
 use Dbp\Relay\PortfolioBundle\Service\WorkflowService;
@@ -76,7 +77,12 @@ class WorkflowActionProcessorTest extends AbstractTestCase
 
         $this->assertInstanceOf(WorkflowAction::class, $result);
         $this->assertNotNull($result->getIdentifier());
-        $this->assertSame(['next' => '/some/url'], $result->getResponseData());
+
+        $msg = $result->getMessage();
+        $this->assertInstanceOf(WorkflowResultMessage::class, $msg);
+        $this->assertSame(WorkflowResultMessage::TYPE_INFO, $msg->getType());
+        $this->assertSame('Step completed', $msg->getTitle());
+        $this->assertSame('The workflow has been completed successfully.', $msg->getText());
     }
 
     public function testAddItemUpdatesWorkflowState(): void

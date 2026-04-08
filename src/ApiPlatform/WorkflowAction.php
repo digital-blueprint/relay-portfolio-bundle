@@ -10,8 +10,6 @@ use ApiPlatform\Metadata\Post;
 use ApiPlatform\OpenApi\Model\Operation;
 use ApiPlatform\OpenApi\Model\RequestBody;
 use Symfony\Component\Serializer\Annotation\Groups;
-use Symfony\Component\Serializer\Attribute\Context;
-use Symfony\Component\Serializer\Serializer;
 
 #[ApiResource(
     shortName: 'PortfolioWorkflowAction',
@@ -58,10 +56,9 @@ class WorkflowAction
     #[Groups(['PortfolioWorkflowAction:input'])]
     private array $payload = [];
 
-    /** @var array<string, mixed> */
     #[Groups(['PortfolioWorkflowAction:output'])]
-    #[Context([Serializer::EMPTY_ARRAY_AS_OBJECT => true])]
-    private array $responseData = [];
+    #[ApiProperty(readableLink: true, genId: false)]
+    private ?WorkflowResultMessage $message = null;
 
     public function getIdentifier(): ?string
     {
@@ -109,19 +106,13 @@ class WorkflowAction
         $this->payload = $payload;
     }
 
-    /**
-     * @return array<string, mixed>
-     */
-    public function getResponseData(): array
+    public function getMessage(): ?WorkflowResultMessage
     {
-        return $this->responseData;
+        return $this->message;
     }
 
-    /**
-     * @param array<string, mixed> $responseData
-     */
-    public function setResponseData(array $responseData): void
+    public function setMessage(?WorkflowResultMessage $message): void
     {
-        $this->responseData = $responseData;
+        $this->message = $message;
     }
 }

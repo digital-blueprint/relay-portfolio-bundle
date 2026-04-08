@@ -47,8 +47,9 @@ class TriggerActionCommand extends Command
 
         $result = $this->workflowService->handleAction($workflowId, $action, $payload);
 
-        if ($result->getResponseData() !== []) {
-            $output->writeln(json_encode($result->getResponseData(), JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
+        $msg = $result->getMessage();
+        if ($msg !== null) {
+            $output->writeln(sprintf('[%s] %s: %s', strtoupper($msg->getType()), $msg->getTitle(), $msg->getText()));
         }
 
         return Command::SUCCESS;
