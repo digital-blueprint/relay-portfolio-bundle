@@ -29,9 +29,9 @@ class WorkflowService
     /**
      * Creates a new workflow instance, persists it, and reconciles its initial tasks.
      *
-     * @param array<string, mixed> $customState
+     * @param array<string, mixed> $internalState
      */
-    public function createWorkflow(string $type, array $customState): WorkflowPersistence
+    public function createWorkflow(string $type, array $internalState): WorkflowPersistence
     {
         $this->workflowTypeHandlerRegistry->getHandler($type);
 
@@ -41,7 +41,7 @@ class WorkflowService
         $workflow->setId(Uuid::v4()->toRfc4122());
         $workflow->setType($type);
         $workflow->setState(WorkflowPersistence::STATE_ACTIVE);
-        $workflow->setCustomState($customState);
+        $workflow->setInternalState($internalState);
         $workflow->setCreatedAt($now);
         $workflow->setUpdatedAt($now);
 
@@ -112,7 +112,7 @@ class WorkflowService
         $this->em->wrapInTransaction(function () use ($workflow, $result): void {
             $now = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
 
-            $workflow->setCustomState($result->getInternalState());
+            $workflow->setInternalState($result->getInternalState());
             if ($result->getState() !== null) {
                 $workflow->setState($result->getState());
             }
@@ -212,7 +212,7 @@ class WorkflowService
             $this->em->wrapInTransaction(function () use ($workflow, $result): void {
                 if ($result !== null) {
                     $now = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
-                    $workflow->setCustomState($result->getInternalState());
+                    $workflow->setInternalState($result->getInternalState());
                     if ($result->getState() !== null) {
                         $workflow->setState($result->getState());
                     }
@@ -249,7 +249,7 @@ class WorkflowService
             $workflow->getId(),
             $workflow->getType(),
             $workflow->getState(),
-            $workflow->getCustomState(),
+            $workflow->getInternalState(),
             $createdAt,
         );
     }

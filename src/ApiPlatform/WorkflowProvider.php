@@ -97,7 +97,7 @@ class WorkflowProvider extends AbstractDataProvider
             $workflow->getId(),
             $workflow->getType(),
             $workflow->getState(),
-            $workflow->getCustomState(),
+            $workflow->getInternalState(),
             $createdAt,
         );
     }

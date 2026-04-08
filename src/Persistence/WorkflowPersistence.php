@@ -28,7 +28,7 @@ class WorkflowPersistence
     private string $state = self::STATE_ACTIVE;
 
     #[ORM\Column(type: 'text')]
-    private string $customState = '{}';
+    private string $internalState = '{}';
 
     #[ORM\Column(type: 'relay_portfolio_datetime_utc', nullable: true)]
     private ?\DateTimeImmutable $createdAt = null;
@@ -77,14 +77,14 @@ class WorkflowPersistence
         $this->state = $state;
     }
 
-    public function getCustomState(): array
+    public function getInternalState(): array
     {
-        return json_decode($this->customState, true, flags: JSON_THROW_ON_ERROR);
+        return json_decode($this->internalState, true, flags: JSON_THROW_ON_ERROR);
     }
 
-    public function setCustomState(array $customState): void
+    public function setInternalState(array $internalState): void
     {
-        $this->customState = json_encode($customState, JSON_THROW_ON_ERROR);
+        $this->internalState = json_encode($internalState, JSON_THROW_ON_ERROR);
     }
 
     public function getCreatedAt(): ?\DateTimeImmutable

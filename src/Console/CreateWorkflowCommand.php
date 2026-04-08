@@ -34,16 +34,16 @@ class CreateWorkflowCommand extends Command
         $stateJson = $input->getOption('state');
 
         try {
-            $customState = json_decode($stateJson, true, flags: JSON_THROW_ON_ERROR);
+            $internalState = json_decode($stateJson, true, flags: JSON_THROW_ON_ERROR);
         } catch (\JsonException $e) {
             throw new \InvalidArgumentException('--state must be a valid JSON object: '.$e->getMessage(), previous: $e);
         }
 
-        if (!is_array($customState) || array_is_list($customState)) {
+        if (!is_array($internalState) || array_is_list($internalState)) {
             throw new \InvalidArgumentException('--state must be a JSON object, e.g. \'{"key":"value"}\'');
         }
 
-        $workflow = $this->workflowService->createWorkflow($type, $customState);
+        $workflow = $this->workflowService->createWorkflow($type, $internalState);
 
         $output->writeln($workflow->getId());
 

@@ -33,7 +33,7 @@ class WorkflowServiceTest extends AbstractTestCase
         $this->assertNotEmpty($workflow->getId());
         $this->assertSame(DummyWorkflowTypeHandler::TYPE, $workflow->getType());
         $this->assertSame(WorkflowPersistence::STATE_ACTIVE, $workflow->getState());
-        $this->assertSame(['key' => 'val'], $workflow->getCustomState());
+        $this->assertSame(['key' => 'val'], $workflow->getInternalState());
     }
 
     public function testCreateWorkflowReconcilesTasks(): void
@@ -110,7 +110,7 @@ class WorkflowServiceTest extends AbstractTestCase
 
         $workflow = $this->service->getWorkflow('wf-1');
         $this->assertSame(WorkflowPersistence::STATE_DONE, $workflow->getState());
-        $this->assertSame(['step' => 'done'], $workflow->getCustomState());
+        $this->assertSame(['step' => 'done'], $workflow->getInternalState());
     }
 
     public function testHandleActionReconcilesTasks(): void
