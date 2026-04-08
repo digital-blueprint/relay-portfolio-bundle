@@ -106,7 +106,7 @@ class WorkflowServiceTest extends AbstractTestCase
         $result = $this->service->handleAction('wf-1', DummyWorkflowTypeHandler::ACTION_PROCEED, []);
 
         $this->assertSame(WorkflowPersistence::STATE_DONE, $result->getState());
-        $this->assertSame(['step' => 'done'], $result->getCustomState());
+        $this->assertSame(['step' => 'done'], $result->getInternalState());
 
         $workflow = $this->service->getWorkflow('wf-1');
         $this->assertSame(WorkflowPersistence::STATE_DONE, $workflow->getState());

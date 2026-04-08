@@ -56,7 +56,7 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
     {
         if ($action === self::ACTION_PROCEED) {
             return new WorkflowActionResult(
-                customState: ['step' => 'done'],
+                internalState: ['step' => 'done'],
                 state: WorkflowData::STATE_DONE,
                 message: new WorkflowResultMessage(
                     type: WorkflowResultMessage::TYPE_INFO,
@@ -67,7 +67,7 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
         }
 
         return new WorkflowActionResult(
-            customState: [],
+            internalState: [],
             state: WorkflowData::STATE_CANCELLED,
         );
     }

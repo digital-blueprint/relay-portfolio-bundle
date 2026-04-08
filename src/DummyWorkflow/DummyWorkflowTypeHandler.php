@@ -26,7 +26,7 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
 
     public function getName(WorkflowData $workflow): string
     {
-        return $workflow->getCustomState()['title'] ?? 'Untitled';
+        return $workflow->getInternalState()['title'] ?? 'Untitled';
     }
 
     public function getDescription(WorkflowData $workflow): string
@@ -36,7 +36,7 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
 
     public function getCurrentStateDisplay(WorkflowData $workflow): StateDisplay
     {
-        $counter = $workflow->getCustomState()['counter'] ?? 0;
+        $counter = $workflow->getInternalState()['counter'] ?? 0;
 
         return match ($workflow->getState()) {
             WorkflowData::STATE_DONE => new StateDisplay('Completed', sprintf('Workflow completed. Counter was: %d', $counter)),
@@ -66,26 +66,26 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
 
     public function handleAction(WorkflowData $workflow, string $action, array $payload): WorkflowActionResult
     {
-        $customState = $workflow->getCustomState();
+        $internalState = $workflow->getInternalState();
 
         if ($action === self::ACTION_INCREMENT) {
-            $customState['counter'] = ($customState['counter'] ?? 0) + ($customState['increment'] ?? 1);
+            $internalState['counter'] = ($internalState['counter'] ?? 0) + ($internalState['increment'] ?? 1);
 
-            return new WorkflowActionResult(customState: $customState);
+            return new WorkflowActionResult(internalState: $internalState);
         }
 
         if ($action === self::ACTION_RESET) {
-            $customState['counter'] = 0;
+            $internalState['counter'] = 0;
 
             return new WorkflowActionResult(
-                customState: $customState,
+                internalState: $internalState,
                 state: WorkflowData::STATE_ACTIVE,
             );
         }
 
         // complete
         return new WorkflowActionResult(
-            customState: $customState,
+            internalState: $internalState,
             state: WorkflowData::STATE_DONE,
             message: new WorkflowResultMessage(
                 type: WorkflowResultMessage::TYPE_SUCCESS,
@@ -99,7 +99,7 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
     {
         $namespace = Uuid::fromString($workflow->getId());
 
-        return [Uuid::v5($namespace, (string) ($workflow->getCustomState()['counter'] ?? 0))->toRfc4122()];
+        return [Uuid::v5($namespace, (string) ($workflow->getInternalState()['counter'] ?? 0))->toRfc4122()];
     }
 
     public function getTaskResponse(WorkflowData $workflow, string $taskId): array

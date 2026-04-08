@@ -80,19 +80,19 @@ class HandlerRegistryTest extends TestCase
         );
 
         $result = new WorkflowActionResult(
-            customState: ['key' => 'val'],
+            internalState: ['key' => 'val'],
             state: WorkflowPersistence::STATE_DONE,
             message: $message,
         );
 
-        $this->assertSame(['key' => 'val'], $result->getCustomState());
+        $this->assertSame(['key' => 'val'], $result->getInternalState());
         $this->assertSame(WorkflowPersistence::STATE_DONE, $result->getState());
         $this->assertSame($message, $result->getMessage());
     }
 
     public function testWorkflowActionResultDefaults(): void
     {
-        $result = new WorkflowActionResult(customState: []);
+        $result = new WorkflowActionResult(internalState: []);
 
         $this->assertNull($result->getState());
         $this->assertNull($result->getMessage());

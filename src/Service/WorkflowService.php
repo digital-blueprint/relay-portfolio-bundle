@@ -112,7 +112,7 @@ class WorkflowService
         $this->em->wrapInTransaction(function () use ($workflow, $result): void {
             $now = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
 
-            $workflow->setCustomState($result->getCustomState());
+            $workflow->setCustomState($result->getInternalState());
             if ($result->getState() !== null) {
                 $workflow->setState($result->getState());
             }
@@ -212,7 +212,7 @@ class WorkflowService
             $this->em->wrapInTransaction(function () use ($workflow, $result): void {
                 if ($result !== null) {
                     $now = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
-                    $workflow->setCustomState($result->getCustomState());
+                    $workflow->setCustomState($result->getInternalState());
                     if ($result->getState() !== null) {
                         $workflow->setState($result->getState());
                     }

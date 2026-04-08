@@ -73,7 +73,7 @@ interface WorkflowTypeHandlerInterface
     /**
      * Computes and returns the response data for a task belonging to this workflow.
      *
-     * All task content is derived on-the-fly from the workflow's custom_state.
+     * All task content is derived on-the-fly from the workflow's internal state.
      *
      * @return array<string, mixed>
      */

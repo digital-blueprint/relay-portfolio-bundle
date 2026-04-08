@@ -9,12 +9,12 @@ use Dbp\Relay\PortfolioBundle\ApiPlatform\WorkflowResultMessage;
 class WorkflowActionResult
 {
     /**
-     * @param array<string, mixed>       $customState Updated custom_state for the workflow
-     * @param string|null                $state       New generic state if it changed, null to keep current
-     * @param WorkflowResultMessage|null $message     Optional UI message to display to the user
+     * @param array<string, mixed>       $internalState Updated internal state for the workflow
+     * @param string|null                $state         New generic state if it changed, null to keep current
+     * @param WorkflowResultMessage|null $message       Optional UI message to display to the user
      */
     public function __construct(
-        private readonly array $customState,
+        private readonly array $internalState,
         private readonly ?string $state = null,
         private readonly ?WorkflowResultMessage $message = null,
     ) {
@@ -23,9 +23,9 @@ class WorkflowActionResult
     /**
      * @return array<string, mixed>
      */
-    public function getCustomState(): array
+    public function getInternalState(): array
     {
-        return $this->customState;
+        return $this->internalState;
     }
 
     public function getState(): ?string

@@ -12,13 +12,13 @@ final class WorkflowData
     public const STATE_ARCHIVED = 'archived';
 
     /**
-     * @param array<string, mixed> $customState
+     * @param array<string, mixed> $internalState
      */
     public function __construct(
         private readonly string $id,
         private readonly string $type,
         private readonly string $state,
-        private readonly array $customState,
+        private readonly array $internalState,
         private readonly \DateTimeImmutable $createdAt,
     ) {
     }
@@ -41,9 +41,9 @@ final class WorkflowData
     /**
      * @return array<string, mixed>
      */
-    public function getCustomState(): array
+    public function getInternalState(): array
     {
-        return $this->customState;
+        return $this->internalState;
     }
 
     public function getCreatedAt(): \DateTimeImmutable
