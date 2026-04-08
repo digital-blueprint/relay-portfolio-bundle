@@ -9,6 +9,7 @@ use Dbp\Relay\PortfolioBundle\ApiPlatform\WorkflowAction;
 use Dbp\Relay\PortfolioBundle\ApiPlatform\WorkflowActionProcessor;
 use Dbp\Relay\PortfolioBundle\ApiPlatform\WorkflowResultMessage;
 use Dbp\Relay\PortfolioBundle\Authorization\AuthorizationService;
+use Dbp\Relay\PortfolioBundle\Handler\WorkflowMessage;
 use Dbp\Relay\PortfolioBundle\Persistence\WorkflowPersistence;
 use Dbp\Relay\PortfolioBundle\Service\WorkflowService;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
@@ -80,7 +81,7 @@ class WorkflowActionProcessorTest extends AbstractTestCase
 
         $msg = $result->getMessage();
         $this->assertInstanceOf(WorkflowResultMessage::class, $msg);
-        $this->assertSame(WorkflowResultMessage::TYPE_INFO, $msg->getType());
+        $this->assertSame(WorkflowMessage::TYPE_INFO, $msg->getType());
         $this->assertSame('Step completed', $msg->getTitle());
         $this->assertSame('The workflow has been completed successfully.', $msg->getText());
     }

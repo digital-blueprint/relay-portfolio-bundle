@@ -38,7 +38,8 @@ class WorkflowActionProcessor extends AbstractDataProcessor
         $result = $this->workflowService->handleAction($workflowId, $action, $data->getPayload());
 
         $data->setIdentifier(Uuid::v4()->toRfc4122());
-        $data->setMessage($result->getMessage());
+        $message = $result->getMessage();
+        $data->setMessage($message !== null ? WorkflowResultMessage::fromMessage($message) : null);
 
         return $data;
     }

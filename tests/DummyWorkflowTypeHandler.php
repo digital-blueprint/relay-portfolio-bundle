@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace Dbp\Relay\PortfolioBundle\Tests;
 
-use Dbp\Relay\PortfolioBundle\ApiPlatform\WorkflowResultMessage;
 use Dbp\Relay\PortfolioBundle\Handler\Action;
 use Dbp\Relay\PortfolioBundle\Handler\StateDisplay;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowActionResult;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowData;
+use Dbp\Relay\PortfolioBundle\Handler\WorkflowMessage;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowTypeHandlerInterface;
 
 class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
@@ -58,8 +58,8 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
             return new WorkflowActionResult(
                 internalState: ['step' => 'done'],
                 state: WorkflowData::STATE_DONE,
-                message: new WorkflowResultMessage(
-                    type: WorkflowResultMessage::TYPE_INFO,
+                message: new WorkflowMessage(
+                    type: WorkflowMessage::TYPE_INFO,
                     title: 'Step completed',
                     text: 'The workflow has been completed successfully.',
                 ),
