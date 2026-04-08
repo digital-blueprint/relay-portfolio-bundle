@@ -8,9 +8,8 @@ use Dbp\Relay\PortfolioBundle\ApiPlatform\WorkflowResultMessage;
 use Dbp\Relay\PortfolioBundle\Handler\Action;
 use Dbp\Relay\PortfolioBundle\Handler\StateDisplay;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowActionResult;
+use Dbp\Relay\PortfolioBundle\Handler\WorkflowData;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowTypeHandlerInterface;
-use Dbp\Relay\PortfolioBundle\Persistence\TaskPersistence;
-use Dbp\Relay\PortfolioBundle\Persistence\WorkflowPersistence;
 
 class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
 {
@@ -25,27 +24,27 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
         return self::TYPE;
     }
 
-    public function getName(WorkflowPersistence $workflow): string
+    public function getName(WorkflowData $workflow): string
     {
         return 'Dummy Workflow';
     }
 
-    public function getDescription(WorkflowPersistence $workflow): string
+    public function getDescription(WorkflowData $workflow): string
     {
         return 'A test workflow';
     }
 
-    public function getCurrentStateDisplay(WorkflowPersistence $workflow): StateDisplay
+    public function getCurrentStateDisplay(WorkflowData $workflow): StateDisplay
     {
         return new StateDisplay('Pending', 'Waiting for input');
     }
 
-    public function canView(WorkflowPersistence $workflow): bool
+    public function canView(WorkflowData $workflow): bool
     {
         return true;
     }
 
-    public function getAvailableActions(WorkflowPersistence $workflow): array
+    public function getAvailableActions(WorkflowData $workflow): array
     {
         return [
             new Action(self::ACTION_PROCEED, 'Proceed'),
@@ -53,12 +52,12 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
         ];
     }
 
-    public function handleAction(WorkflowPersistence $workflow, string $action, array $payload): WorkflowActionResult
+    public function handleAction(WorkflowData $workflow, string $action, array $payload): WorkflowActionResult
     {
         if ($action === self::ACTION_PROCEED) {
             return new WorkflowActionResult(
                 customState: ['step' => 'done'],
-                state: WorkflowPersistence::STATE_DONE,
+                state: WorkflowData::STATE_DONE,
                 message: new WorkflowResultMessage(
                     type: WorkflowResultMessage::TYPE_INFO,
                     title: 'Step completed',
@@ -69,26 +68,26 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
 
         return new WorkflowActionResult(
             customState: [],
-            state: WorkflowPersistence::STATE_CANCELLED,
+            state: WorkflowData::STATE_CANCELLED,
         );
     }
 
-    public function getExpectedTasks(WorkflowPersistence $workflow): array
+    public function getExpectedTasks(WorkflowData $workflow): array
     {
         // Return one task while active, none otherwise
-        if ($workflow->getState() === WorkflowPersistence::STATE_ACTIVE) {
+        if ($workflow->getState() === WorkflowData::STATE_ACTIVE) {
             return ['task-'.$workflow->getId()];
         }
 
         return [];
     }
 
-    public function getTaskResponse(TaskPersistence $task, WorkflowPersistence $workflow): array
+    public function getTaskResponse(WorkflowData $workflow, string $taskId): array
     {
         return ['info' => 'computed from '.$workflow->getId()];
     }
 
-    public function ping(WorkflowPersistence $workflow): ?WorkflowActionResult
+    public function ping(WorkflowData $workflow): ?WorkflowActionResult
     {
         ++$this->pingCallCount;
 

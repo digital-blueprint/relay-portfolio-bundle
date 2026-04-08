@@ -6,6 +6,7 @@ namespace Dbp\Relay\PortfolioBundle\ApiPlatform;
 
 use Dbp\Relay\CoreBundle\Rest\AbstractDataProvider;
 use Dbp\Relay\PortfolioBundle\Authorization\AuthorizationService;
+use Dbp\Relay\PortfolioBundle\Handler\WorkflowData;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowTypeHandlerRegistry;
 use Dbp\Relay\PortfolioBundle\Persistence\WorkflowPersistence;
 use Dbp\Relay\PortfolioBundle\Service\WorkflowService;
@@ -58,10 +59,12 @@ class WorkflowProvider extends AbstractDataProvider
 
         if ($includeHandlerData && $this->workflowTypeHandlerRegistry->hasHandler($workflow->getType())) {
             $handler = $this->workflowTypeHandlerRegistry->getHandler($workflow->getType());
-            $item->setName($handler->getName($workflow));
-            $item->setDescription($handler->getDescription($workflow));
+            $workflowData = $this->toWorkflowData($workflow);
 
-            $stateDisplay = $handler->getCurrentStateDisplay($workflow);
+            $item->setName($handler->getName($workflowData));
+            $item->setDescription($handler->getDescription($workflowData));
+
+            $stateDisplay = $handler->getCurrentStateDisplay($workflowData);
             $item->setCurrentStateDisplay([
                 'label' => $stateDisplay->getLabel(),
                 'description' => $stateDisplay->getDescription(),
@@ -76,10 +79,26 @@ class WorkflowProvider extends AbstractDataProvider
 
                     return $data;
                 },
-                $handler->getAvailableActions($workflow)
+                $handler->getAvailableActions($workflowData)
             ));
         }
 
         return $item;
+    }
+
+    private function toWorkflowData(WorkflowPersistence $workflow): WorkflowData
+    {
+        $createdAt = $workflow->getCreatedAt();
+        if ($createdAt === null) {
+            throw new \LogicException(sprintf("Workflow '%s' has no createdAt set.", $workflow->getId()));
+        }
+
+        return new WorkflowData(
+            $workflow->getId(),
+            $workflow->getType(),
+            $workflow->getState(),
+            $workflow->getCustomState(),
+            $createdAt,
+        );
     }
 }

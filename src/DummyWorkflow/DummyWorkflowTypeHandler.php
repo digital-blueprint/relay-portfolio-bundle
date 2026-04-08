@@ -8,9 +8,8 @@ use Dbp\Relay\PortfolioBundle\ApiPlatform\WorkflowResultMessage;
 use Dbp\Relay\PortfolioBundle\Handler\Action;
 use Dbp\Relay\PortfolioBundle\Handler\StateDisplay;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowActionResult;
+use Dbp\Relay\PortfolioBundle\Handler\WorkflowData;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowTypeHandlerInterface;
-use Dbp\Relay\PortfolioBundle\Persistence\TaskPersistence;
-use Dbp\Relay\PortfolioBundle\Persistence\WorkflowPersistence;
 use Symfony\Component\Uid\Uuid;
 
 class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
@@ -25,47 +24,47 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
         return self::TYPE;
     }
 
-    public function getName(WorkflowPersistence $workflow): string
+    public function getName(WorkflowData $workflow): string
     {
         return $workflow->getCustomState()['title'] ?? 'Untitled';
     }
 
-    public function getDescription(WorkflowPersistence $workflow): string
+    public function getDescription(WorkflowData $workflow): string
     {
         return '';
     }
 
-    public function getCurrentStateDisplay(WorkflowPersistence $workflow): StateDisplay
+    public function getCurrentStateDisplay(WorkflowData $workflow): StateDisplay
     {
         $counter = $workflow->getCustomState()['counter'] ?? 0;
 
         return match ($workflow->getState()) {
-            WorkflowPersistence::STATE_DONE => new StateDisplay('Completed', sprintf('Workflow completed. Counter was: %d', $counter)),
+            WorkflowData::STATE_DONE => new StateDisplay('Completed', sprintf('Workflow completed. Counter was: %d', $counter)),
             default => new StateDisplay('Waiting', sprintf('Waiting for input. Counter: %d', $counter)),
         };
     }
 
-    public function canView(WorkflowPersistence $workflow): bool
+    public function canView(WorkflowData $workflow): bool
     {
         return true;
     }
 
-    public function getAvailableActions(WorkflowPersistence $workflow): array
+    public function getAvailableActions(WorkflowData $workflow): array
     {
         return match ($workflow->getState()) {
-            WorkflowPersistence::STATE_ACTIVE => [
+            WorkflowData::STATE_ACTIVE => [
                 new Action(self::ACTION_INCREMENT, 'Increment Counter'),
                 new Action(self::ACTION_COMPLETE, 'Complete'),
                 new Action('view', 'View Details', Action::TYPE_URL, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ#'.$workflow->getId()),
             ],
-            WorkflowPersistence::STATE_DONE => [
+            WorkflowData::STATE_DONE => [
                 new Action(self::ACTION_RESET, 'Reset'),
             ],
             default => [],
         };
     }
 
-    public function handleAction(WorkflowPersistence $workflow, string $action, array $payload): WorkflowActionResult
+    public function handleAction(WorkflowData $workflow, string $action, array $payload): WorkflowActionResult
     {
         $customState = $workflow->getCustomState();
 
@@ -80,14 +79,14 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
 
             return new WorkflowActionResult(
                 customState: $customState,
-                state: WorkflowPersistence::STATE_ACTIVE,
+                state: WorkflowData::STATE_ACTIVE,
             );
         }
 
         // complete
         return new WorkflowActionResult(
             customState: $customState,
-            state: WorkflowPersistence::STATE_DONE,
+            state: WorkflowData::STATE_DONE,
             message: new WorkflowResultMessage(
                 type: WorkflowResultMessage::TYPE_SUCCESS,
                 title: 'Workflow completed',
@@ -96,20 +95,19 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
         );
     }
 
-    public function getExpectedTasks(WorkflowPersistence $workflow): array
+    public function getExpectedTasks(WorkflowData $workflow): array
     {
-        $customState = $workflow->getCustomState();
         $namespace = Uuid::fromString($workflow->getId());
 
-        return [Uuid::v5($namespace, (string) ($customState['counter'] ?? 0))->toRfc4122()];
+        return [Uuid::v5($namespace, (string) ($workflow->getCustomState()['counter'] ?? 0))->toRfc4122()];
     }
 
-    public function getTaskResponse(TaskPersistence $task, WorkflowPersistence $workflow): array
+    public function getTaskResponse(WorkflowData $workflow, string $taskId): array
     {
         return [];
     }
 
-    public function ping(WorkflowPersistence $workflow): ?WorkflowActionResult
+    public function ping(WorkflowData $workflow): ?WorkflowActionResult
     {
         return null;
     }

@@ -4,9 +4,6 @@ declare(strict_types=1);
 
 namespace Dbp\Relay\PortfolioBundle\Handler;
 
-use Dbp\Relay\PortfolioBundle\Persistence\TaskPersistence;
-use Dbp\Relay\PortfolioBundle\Persistence\WorkflowPersistence;
-
 interface WorkflowTypeHandlerInterface
 {
     /**
@@ -17,17 +14,17 @@ interface WorkflowTypeHandlerInterface
     /**
      * Returns the display name for the given workflow instance.
      */
-    public function getName(WorkflowPersistence $workflow): string;
+    public function getName(WorkflowData $workflow): string;
 
     /**
      * Returns a human-readable description for the given workflow instance.
      */
-    public function getDescription(WorkflowPersistence $workflow): string;
+    public function getDescription(WorkflowData $workflow): string;
 
     /**
      * Returns display information about the current state of the workflow.
      */
-    public function getCurrentStateDisplay(WorkflowPersistence $workflow): StateDisplay;
+    public function getCurrentStateDisplay(WorkflowData $workflow): StateDisplay;
 
     /**
      * Returns whether the current user can view this workflow.
@@ -38,7 +35,7 @@ interface WorkflowTypeHandlerInterface
      *
      * The current user is available via an injected UserSessionInterface.
      */
-    public function canView(WorkflowPersistence $workflow): bool;
+    public function canView(WorkflowData $workflow): bool;
 
     /**
      * Returns the actions available to the current user for this workflow.
@@ -47,7 +44,7 @@ interface WorkflowTypeHandlerInterface
      *
      * @return Action[]
      */
-    public function getAvailableActions(WorkflowPersistence $workflow): array;
+    public function getAvailableActions(WorkflowData $workflow): array;
 
     /**
      * Handles a workflow action triggered by the current user.
@@ -56,7 +53,7 @@ interface WorkflowTypeHandlerInterface
      *
      * @param array<string, mixed> $payload
      */
-    public function handleAction(WorkflowPersistence $workflow, string $action, array $payload): WorkflowActionResult;
+    public function handleAction(WorkflowData $workflow, string $action, array $payload): WorkflowActionResult;
 
     /**
      * Returns the complete set of task IDs that should currently exist for this workflow.
@@ -71,7 +68,7 @@ interface WorkflowTypeHandlerInterface
      *
      * @return string[]
      */
-    public function getExpectedTasks(WorkflowPersistence $workflow): array;
+    public function getExpectedTasks(WorkflowData $workflow): array;
 
     /**
      * Computes and returns the response data for a task belonging to this workflow.
@@ -80,7 +77,7 @@ interface WorkflowTypeHandlerInterface
      *
      * @return array<string, mixed>
      */
-    public function getTaskResponse(TaskPersistence $task, WorkflowPersistence $workflow): array;
+    public function getTaskResponse(WorkflowData $workflow, string $taskId): array;
 
     /**
      * Periodic check called by the cron job, e.g. for sending reminder emails or
@@ -90,5 +87,5 @@ interface WorkflowTypeHandlerInterface
      * Return null if no state change is needed, or a WorkflowActionResult to update
      * the workflow state and/or create tasks.
      */
-    public function ping(WorkflowPersistence $workflow): ?WorkflowActionResult;
+    public function ping(WorkflowData $workflow): ?WorkflowActionResult;
 }

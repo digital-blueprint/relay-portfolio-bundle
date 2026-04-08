@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Dbp\Relay\PortfolioBundle\Service;
 
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowActionResult;
+use Dbp\Relay\PortfolioBundle\Handler\WorkflowData;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowTypeHandlerRegistry;
 use Dbp\Relay\PortfolioBundle\Persistence\TaskPersistence;
 use Dbp\Relay\PortfolioBundle\Persistence\WorkflowPersistence;
@@ -93,8 +94,9 @@ class WorkflowService
         }
 
         $handler = $this->workflowTypeHandlerRegistry->getHandler($workflow->getType());
+        $workflowData = $this->toWorkflowData($workflow);
 
-        $availableActions = $handler->getAvailableActions($workflow);
+        $availableActions = $handler->getAvailableActions($workflowData);
         $availableActionIds = array_map(fn ($a) => $a->getId(), $availableActions);
         if (!in_array($action, $availableActionIds, true)) {
             throw new BadRequestHttpException(sprintf(
@@ -105,7 +107,7 @@ class WorkflowService
             ));
         }
 
-        $result = $handler->handleAction($workflow, $action, $payload);
+        $result = $handler->handleAction($workflowData, $action, $payload);
 
         $this->em->wrapInTransaction(function () use ($workflow, $result): void {
             $now = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
@@ -183,7 +185,7 @@ class WorkflowService
 
         $handler = $this->workflowTypeHandlerRegistry->getHandler($workflow->getType());
 
-        return $handler->getTaskResponse($task, $workflow);
+        return $handler->getTaskResponse($this->toWorkflowData($workflow), $task->getId());
     }
 
     // -------------------------------------------------------------------------
@@ -205,7 +207,7 @@ class WorkflowService
                 continue;
             }
             $handler = $this->workflowTypeHandlerRegistry->getHandler($workflow->getType());
-            $result = $handler->ping($workflow);
+            $result = $handler->ping($this->toWorkflowData($workflow));
 
             $this->em->wrapInTransaction(function () use ($workflow, $result): void {
                 if ($result !== null) {
@@ -233,7 +235,23 @@ class WorkflowService
             return false;
         }
 
-        return $this->workflowTypeHandlerRegistry->getHandler($workflow->getType())->canView($workflow);
+        return $this->workflowTypeHandlerRegistry->getHandler($workflow->getType())->canView($this->toWorkflowData($workflow));
+    }
+
+    private function toWorkflowData(WorkflowPersistence $workflow): WorkflowData
+    {
+        $createdAt = $workflow->getCreatedAt();
+        if ($createdAt === null) {
+            throw new \LogicException(sprintf("Workflow '%s' has no createdAt set.", $workflow->getId()));
+        }
+
+        return new WorkflowData(
+            $workflow->getId(),
+            $workflow->getType(),
+            $workflow->getState(),
+            $workflow->getCustomState(),
+            $createdAt,
+        );
     }
 
     /**
@@ -247,7 +265,7 @@ class WorkflowService
         }
 
         $handler = $this->workflowTypeHandlerRegistry->getHandler($workflow->getType());
-        $expectedIds = $handler->getExpectedTasks($workflow);
+        $expectedIds = $handler->getExpectedTasks($this->toWorkflowData($workflow));
 
         $existingTasks = $this->em->getRepository(TaskPersistence::class)->findBy(['workflow' => $workflow]);
         $existingIds = array_map(fn (TaskPersistence $t) => $t->getId(), $existingTasks);
