@@ -7,6 +7,19 @@ namespace Dbp\Relay\PortfolioBundle\Handler;
 interface WorkflowTypeHandlerInterface
 {
     /**
+     * Transforms caller-supplied input into the initial internalState for a new workflow.
+     *
+     * Called once by WorkflowService::createWorkflow() before persisting. Use this to
+     * generate stable IDs, enforce defaults, and validate input. The returned array
+     * becomes the persisted internalState; the input array is never stored directly.
+     *
+     * @param array<string, mixed> $input
+     *
+     * @return array<string, mixed>
+     */
+    public function create(array $input): array;
+
+    /**
      * Returns the workflow type identifier this handler is responsible for.
      */
     public function getType(): string;

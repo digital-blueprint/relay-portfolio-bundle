@@ -29,11 +29,16 @@ class WorkflowService
     /**
      * Creates a new workflow instance, persists it, and reconciles its initial tasks.
      *
-     * @param array<string, mixed> $internalState
+     * The handler's create() method is called first to transform the caller-supplied
+     * input into the actual internalState. This allows handlers to generate stable IDs,
+     * set defaults, and validate input before anything is persisted.
+     *
+     * @param array<string, mixed> $input
      */
-    public function createWorkflow(string $type, array $internalState): WorkflowPersistence
+    public function createWorkflow(string $type, array $input): WorkflowPersistence
     {
-        $this->workflowTypeHandlerRegistry->getHandler($type);
+        $handler = $this->workflowTypeHandlerRegistry->getHandler($type);
+        $internalState = $handler->create($input);
 
         $now = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
 
@@ -52,6 +57,29 @@ class WorkflowService
         });
 
         return $workflow;
+    }
+
+    /**
+     * Deletes a workflow and all its associated tasks by ID.
+     * Returns true if the workflow existed and was deleted, false if it was not found.
+     */
+    public function deleteWorkflow(string $id): bool
+    {
+        $workflow = $this->em->getRepository(WorkflowPersistence::class)->find($id);
+        if ($workflow === null) {
+            return false;
+        }
+
+        $this->em->wrapInTransaction(function () use ($workflow): void {
+            $tasks = $this->em->getRepository(TaskPersistence::class)->findBy(['workflow' => $workflow]);
+            foreach ($tasks as $task) {
+                $this->em->remove($task);
+            }
+            $this->em->remove($workflow);
+            $this->em->flush();
+        });
+
+        return true;
     }
 
     /**

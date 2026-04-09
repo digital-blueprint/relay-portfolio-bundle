@@ -25,25 +25,25 @@ class CreateWorkflowCommand extends Command
             ->setName('dbp:relay:portfolio:create-workflow')
             ->setDescription('Create a new workflow instance')
             ->addArgument('type', InputArgument::REQUIRED, 'The workflow type identifier')
-            ->addOption('state', null, InputOption::VALUE_REQUIRED, 'Initial custom state as a JSON string', '{}');
+            ->addOption('input', null, InputOption::VALUE_REQUIRED, 'Workflow input as a JSON string', '{}');
     }
 
-    protected function execute(InputInterface $input, OutputInterface $output): int
+    protected function execute(InputInterface $console, OutputInterface $output): int
     {
-        $type = $input->getArgument('type');
-        $stateJson = $input->getOption('state');
+        $type = $console->getArgument('type');
+        $inputJson = $console->getOption('input');
 
         try {
-            $internalState = json_decode($stateJson, true, flags: JSON_THROW_ON_ERROR);
+            $input = json_decode($inputJson, true, flags: JSON_THROW_ON_ERROR);
         } catch (\JsonException $e) {
-            throw new \InvalidArgumentException('--state must be a valid JSON object: '.$e->getMessage(), previous: $e);
+            throw new \InvalidArgumentException('--input must be a valid JSON object: '.$e->getMessage(), previous: $e);
         }
 
-        if (!is_array($internalState) || array_is_list($internalState)) {
-            throw new \InvalidArgumentException('--state must be a JSON object, e.g. \'{"key":"value"}\'');
+        if (!is_array($input) || (count($input) > 0 && array_is_list($input))) {
+            throw new \InvalidArgumentException('--input must be a JSON object, e.g. \'{"key":"value"}\'');
         }
 
-        $workflow = $this->workflowService->createWorkflow($type, $internalState);
+        $workflow = $this->workflowService->createWorkflow($type, $input);
 
         $output->writeln($workflow->getId());
 

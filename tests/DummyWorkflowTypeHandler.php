@@ -19,6 +19,11 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
 
     public int $pingCallCount = 0;
 
+    public function create(array $input): array
+    {
+        return $input;
+    }
+
     public function getType(): string
     {
         return self::TYPE;

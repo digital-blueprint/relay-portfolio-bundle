@@ -1,3 +1,20 @@
+signing_workflow:
+    name: 'Signatur-Workflow'
+    description: 'Signieren Sie ein oder mehrere PDF-Dokumente über einen externen Signaturdienst.'
+    state:
+        completed: 'Abgeschlossen'
+        completed_desc: 'Alle %total% Dokument(e) wurden signiert.'
+        pending: 'Ausstehend'
+        pending_desc: '%signed% / %total% Dokument(e) signiert'
+    action:
+        sign: 'Dokumente signieren'
+        check: 'Signaturstatus prüfen'
+    message:
+        completed_title: 'Signatur abgeschlossen'
+        completed_text: 'Alle %total% Dokument(e) wurden erfolgreich signiert.'
+        pending_title: 'Signatur in Bearbeitung'
+        pending_text: '%signed% / %total% Dokument(e) signiert'
+
 dummy_workflow:
     name:
         untitled: 'Unbenannt'

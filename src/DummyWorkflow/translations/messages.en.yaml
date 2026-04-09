@@ -1,3 +1,20 @@
+signing_workflow:
+    name: 'Signing Workflow'
+    description: 'Sign one or more PDF documents via an external signing service.'
+    state:
+        completed: 'Completed'
+        completed_desc: 'All %total% document(s) have been signed.'
+        pending: 'Pending'
+        pending_desc: '%signed% / %total% document(s) signed'
+    action:
+        sign: 'Sign Documents'
+        check: 'Check Signing Status'
+    message:
+        completed_title: 'Signing complete'
+        completed_text: 'All %total% document(s) have been signed successfully.'
+        pending_title: 'Signing in progress'
+        pending_text: '%signed% / %total% document(s) signed'
+
 dummy_workflow:
     name:
         untitled: 'Untitled'

@@ -32,6 +32,15 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
         $this->translator = $translator;
     }
 
+    public function create(array $input): array
+    {
+        $input['title'] ??= [];
+        $input['counter'] ??= 0;
+        $input['increment'] ??= 1;
+
+        return $input;
+    }
+
     public function getType(): string
     {
         return self::TYPE;
@@ -39,12 +48,9 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
 
     public function getName(WorkflowData $workflow, string $lang): string
     {
-        $titles = $workflow->getInternalState()['title'] ?? null;
-        if (is_array($titles)) {
-            return $titles[$lang] ?? $titles['en'] ?? $this->translator->trans('dummy_workflow.name.untitled', locale: $lang);
-        }
+        $titles = $workflow->getInternalState()['title'];
 
-        return $this->translator->trans('dummy_workflow.name.untitled', locale: $lang);
+        return $titles[$lang] ?? $titles['en'] ?? $this->translator->trans('dummy_workflow.name.untitled', locale: $lang);
     }
 
     public function getDescription(WorkflowData $workflow, string $lang): string
@@ -54,7 +60,7 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
 
     public function getCurrentStateDisplay(WorkflowData $workflow, string $lang): StateDisplay
     {
-        $counter = $workflow->getInternalState()['counter'] ?? 0;
+        $counter = $workflow->getInternalState()['counter'];
 
         return match ($workflow->getState()) {
             WorkflowData::STATE_DONE => new StateDisplay(
@@ -93,7 +99,7 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
         $internalState = $workflow->getInternalState();
 
         if ($action === self::ACTION_INCREMENT) {
-            $internalState['counter'] = ($internalState['counter'] ?? 0) + ($internalState['increment'] ?? 1);
+            $internalState['counter'] += $internalState['increment'];
 
             return new WorkflowActionResult(internalState: $internalState);
         }
@@ -123,7 +129,7 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
     {
         $namespace = Uuid::fromString($workflow->getId());
 
-        return [Uuid::v5($namespace, (string) ($workflow->getInternalState()['counter'] ?? 0))->toRfc4122()];
+        return [Uuid::v5($namespace, (string) $workflow->getInternalState()['counter'])->toRfc4122()];
     }
 
     public function getTaskResponse(WorkflowData $workflow, string $taskId, string $lang): array

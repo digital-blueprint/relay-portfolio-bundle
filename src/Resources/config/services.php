@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Dbp\Relay\PortfolioBundle\Resources\config;
 
+use Dbp\Relay\PortfolioBundle\Handler\WorkflowTypeHandlerHelper;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowTypeHandlerRegistry;
 use Dbp\Relay\PortfolioBundle\Service\WorkflowService;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
@@ -30,6 +31,10 @@ return static function (ContainerConfigurator $configurator): void {
         ->autoconfigure();
 
     $services->load('Dbp\\Relay\\PortfolioBundle\\DummyWorkflow\\', '../../DummyWorkflow')
+        ->autowire()
+        ->autoconfigure();
+
+    $services->set(WorkflowTypeHandlerHelper::class)
         ->autowire()
         ->autoconfigure();
 
