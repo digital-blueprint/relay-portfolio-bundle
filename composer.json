@@ -21,6 +21,7 @@
         "symfony/framework-bundle": "^6.4 || ^7.4",
         "symfony/http-kernel": "^6.4 || ^7.4",
         "symfony/serializer": "^6.4 || ^7.4",
+        "symfony/translation": "^6.4 || ^7.4",
         "symfony/uid": "^7.4"
     },
     "require-dev": {

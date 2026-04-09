@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Dbp\Relay\PortfolioBundle\ApiPlatform;
 
+use Dbp\Relay\CoreBundle\Locale\Locale;
 use Dbp\Relay\CoreBundle\Rest\AbstractDataProvider;
 use Dbp\Relay\PortfolioBundle\Authorization\AuthorizationService;
 use Dbp\Relay\PortfolioBundle\Persistence\TaskPersistence;
@@ -18,6 +19,7 @@ class TaskProvider extends AbstractDataProvider
     public function __construct(
         private readonly WorkflowService $workflowService,
         private readonly AuthorizationService $authorizationService,
+        private readonly Locale $locale,
     ) {
         parent::__construct();
     }
@@ -31,7 +33,7 @@ class TaskProvider extends AbstractDataProvider
             return null;
         }
 
-        $taskData = $this->workflowService->getTaskResponse($task);
+        $taskData = $this->workflowService->getTaskResponse($task, $this->locale->getCurrentPrimaryLanguage());
 
         return $this->toTaskItem($task, $taskData);
     }

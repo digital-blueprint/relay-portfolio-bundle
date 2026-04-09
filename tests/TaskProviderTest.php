@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Dbp\Relay\PortfolioBundle\Tests;
 
+use Dbp\Relay\CoreBundle\Locale\Locale;
 use Dbp\Relay\CoreBundle\TestUtils\DataProviderTester;
 use Dbp\Relay\PortfolioBundle\ApiPlatform\TaskItem;
 use Dbp\Relay\PortfolioBundle\ApiPlatform\TaskProvider;
@@ -21,7 +22,8 @@ class TaskProviderTest extends AbstractTestCase
 
         $workflowService = $this->container->get(WorkflowService::class);
         $authorizationService = $this->container->get(AuthorizationService::class);
-        $provider = new TaskProvider($workflowService, $authorizationService);
+        $locale = $this->container->get(Locale::class);
+        $provider = new TaskProvider($workflowService, $authorizationService, $locale);
         $this->tester = DataProviderTester::create($provider, TaskItem::class, ['PortfolioTask:output']);
     }
 

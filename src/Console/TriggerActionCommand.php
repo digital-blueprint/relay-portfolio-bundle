@@ -45,7 +45,7 @@ class TriggerActionCommand extends Command
             throw new \InvalidArgumentException('--payload must be a JSON object, e.g. \'{"key":"value"}\'');
         }
 
-        $result = $this->workflowService->handleAction($workflowId, $action, $payload);
+        $result = $this->workflowService->handleAction($workflowId, $action, $payload, 'en');
 
         $msg = $result->getMessage();
         if ($msg !== null) {

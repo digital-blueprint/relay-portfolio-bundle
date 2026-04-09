@@ -88,7 +88,7 @@ class WorkflowServiceTest extends AbstractTestCase
     public function testHandleActionWorkflowNotFound(): void
     {
         $this->expectException(NotFoundHttpException::class);
-        $this->service->handleAction('no-such-id', DummyWorkflowTypeHandler::ACTION_PROCEED, []);
+        $this->service->handleAction('no-such-id', DummyWorkflowTypeHandler::ACTION_PROCEED, [], 'en');
     }
 
     public function testHandleActionUnavailableAction(): void
@@ -96,14 +96,14 @@ class WorkflowServiceTest extends AbstractTestCase
         $this->testEntityManager->addWorkflow('wf-1', DummyWorkflowTypeHandler::TYPE);
 
         $this->expectException(BadRequestHttpException::class);
-        $this->service->handleAction('wf-1', 'unknown-action', []);
+        $this->service->handleAction('wf-1', 'unknown-action', [], 'en');
     }
 
     public function testHandleActionUpdatesWorkflowState(): void
     {
         $this->testEntityManager->addWorkflow('wf-1', DummyWorkflowTypeHandler::TYPE);
 
-        $result = $this->service->handleAction('wf-1', DummyWorkflowTypeHandler::ACTION_PROCEED, []);
+        $result = $this->service->handleAction('wf-1', DummyWorkflowTypeHandler::ACTION_PROCEED, [], 'en');
 
         $this->assertSame(WorkflowPersistence::STATE_DONE, $result->getState());
         $this->assertSame(['step' => 'done'], $result->getInternalState());
@@ -120,7 +120,7 @@ class WorkflowServiceTest extends AbstractTestCase
         $this->testEntityManager->addTask('task-wf-1', $workflow);
 
         // Proceed → done: handler returns no tasks for done state, so existing task is deleted
-        $this->service->handleAction('wf-1', DummyWorkflowTypeHandler::ACTION_PROCEED, []);
+        $this->service->handleAction('wf-1', DummyWorkflowTypeHandler::ACTION_PROCEED, [], 'en');
 
         $tasks = $this->service->getTasksForWorkflow('wf-1', 1, 10);
         $this->assertCount(0, $tasks);
@@ -130,7 +130,7 @@ class WorkflowServiceTest extends AbstractTestCase
     {
         $this->testEntityManager->addWorkflow('wf-1', DummyWorkflowTypeHandler::TYPE);
 
-        $result = $this->service->handleAction('wf-1', DummyWorkflowTypeHandler::ACTION_CANCEL, []);
+        $result = $this->service->handleAction('wf-1', DummyWorkflowTypeHandler::ACTION_CANCEL, [], 'en');
         $this->assertSame(WorkflowPersistence::STATE_CANCELLED, $result->getState());
 
         $workflow = $this->service->getWorkflow('wf-1');
@@ -177,7 +177,7 @@ class WorkflowServiceTest extends AbstractTestCase
         $workflow = $this->testEntityManager->addWorkflow('wf-1', DummyWorkflowTypeHandler::TYPE);
         $task = $this->testEntityManager->addTask('t-1', $workflow);
 
-        $data = $this->service->getTaskResponse($task);
+        $data = $this->service->getTaskResponse($task, 'en');
         $this->assertSame(['info' => 'computed from wf-1'], $data);
     }
 

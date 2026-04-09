@@ -87,7 +87,7 @@ class WorkflowService
      * @throws NotFoundHttpException   if the workflow does not exist or is not visible to the current user
      * @throws BadRequestHttpException if the action is not available
      */
-    public function handleAction(string $workflowId, string $action, array $payload): WorkflowActionResult
+    public function handleAction(string $workflowId, string $action, array $payload, string $lang): WorkflowActionResult
     {
         $workflow = $this->em->getRepository(WorkflowPersistence::class)->find($workflowId);
         if ($workflow === null || !$this->canView($workflow)) {
@@ -97,7 +97,7 @@ class WorkflowService
         $handler = $this->workflowTypeHandlerRegistry->getHandler($workflow->getType());
         $workflowData = $this->toWorkflowData($workflow);
 
-        $availableActions = $handler->getAvailableActions($workflowData);
+        $availableActions = $handler->getAvailableActions($workflowData, $lang);
         $availableActionIds = array_map(fn ($a) => $a->getId(), $availableActions);
         if (!in_array($action, $availableActionIds, true)) {
             throw new BadRequestHttpException(sprintf(
@@ -108,7 +108,7 @@ class WorkflowService
             ));
         }
 
-        $result = $handler->handleAction($workflowData, $action, $payload);
+        $result = $handler->handleAction($workflowData, $action, $payload, $lang);
 
         $this->em->wrapInTransaction(function () use ($workflow, $result): void {
             $now = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
@@ -177,7 +177,7 @@ class WorkflowService
      *
      * @throws NotFoundHttpException if the task or its workflow does not exist or is not visible
      */
-    public function getTaskResponse(TaskPersistence $task): array
+    public function getTaskResponse(TaskPersistence $task, string $lang): array
     {
         $workflow = $task->getWorkflow();
         if ($workflow === null || !$this->canView($workflow)) {
@@ -186,7 +186,7 @@ class WorkflowService
 
         $handler = $this->workflowTypeHandlerRegistry->getHandler($workflow->getType());
 
-        return $handler->getTaskResponse($this->toWorkflowData($workflow), $task->getId());
+        return $handler->getTaskResponse($this->toWorkflowData($workflow), $task->getId(), $lang);
     }
 
     // -------------------------------------------------------------------------

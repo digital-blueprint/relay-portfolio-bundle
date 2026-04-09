@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Dbp\Relay\PortfolioBundle\Tests;
 
+use Dbp\Relay\CoreBundle\Locale\Locale;
 use Dbp\Relay\CoreBundle\TestUtils\DataProcessorTester;
 use Dbp\Relay\PortfolioBundle\ApiPlatform\WorkflowAction;
 use Dbp\Relay\PortfolioBundle\ApiPlatform\WorkflowActionProcessor;
@@ -25,7 +26,8 @@ class WorkflowActionProcessorTest extends AbstractTestCase
 
         $workflowService = $this->container->get(WorkflowService::class);
         $authorizationService = $this->container->get(AuthorizationService::class);
-        $processor = new WorkflowActionProcessor($workflowService, $authorizationService);
+        $locale = $this->container->get(Locale::class);
+        $processor = new WorkflowActionProcessor($workflowService, $authorizationService, $locale);
         $this->tester = DataProcessorTester::create($processor, WorkflowAction::class);
     }
 

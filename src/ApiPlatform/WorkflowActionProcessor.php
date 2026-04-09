@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Dbp\Relay\PortfolioBundle\ApiPlatform;
 
+use Dbp\Relay\CoreBundle\Locale\Locale;
 use Dbp\Relay\CoreBundle\Rest\AbstractDataProcessor;
 use Dbp\Relay\PortfolioBundle\Authorization\AuthorizationService;
 use Dbp\Relay\PortfolioBundle\Service\WorkflowService;
@@ -15,6 +16,7 @@ class WorkflowActionProcessor extends AbstractDataProcessor
     public function __construct(
         private readonly WorkflowService $workflowService,
         private readonly AuthorizationService $authorizationService,
+        private readonly Locale $locale,
     ) {
         parent::__construct();
     }
@@ -35,7 +37,7 @@ class WorkflowActionProcessor extends AbstractDataProcessor
             throw new BadRequestHttpException('action is required.');
         }
 
-        $result = $this->workflowService->handleAction($workflowId, $action, $data->getPayload());
+        $result = $this->workflowService->handleAction($workflowId, $action, $data->getPayload(), $this->locale->getCurrentPrimaryLanguage());
 
         $data->setIdentifier(Uuid::v4()->toRfc4122());
         $message = $result->getMessage();

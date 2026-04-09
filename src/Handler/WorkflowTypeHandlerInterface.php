@@ -14,17 +14,17 @@ interface WorkflowTypeHandlerInterface
     /**
      * Returns the display name for the given workflow instance.
      */
-    public function getName(WorkflowData $workflow): string;
+    public function getName(WorkflowData $workflow, string $lang): string;
 
     /**
      * Returns a human-readable description for the given workflow instance.
      */
-    public function getDescription(WorkflowData $workflow): string;
+    public function getDescription(WorkflowData $workflow, string $lang): string;
 
     /**
      * Returns display information about the current state of the workflow.
      */
-    public function getCurrentStateDisplay(WorkflowData $workflow): StateDisplay;
+    public function getCurrentStateDisplay(WorkflowData $workflow, string $lang): StateDisplay;
 
     /**
      * Returns whether the current user can view this workflow.
@@ -44,7 +44,7 @@ interface WorkflowTypeHandlerInterface
      *
      * @return Action[]
      */
-    public function getAvailableActions(WorkflowData $workflow): array;
+    public function getAvailableActions(WorkflowData $workflow, string $lang): array;
 
     /**
      * Handles a workflow action triggered by the current user.
@@ -53,7 +53,7 @@ interface WorkflowTypeHandlerInterface
      *
      * @param array<string, mixed> $payload
      */
-    public function handleAction(WorkflowData $workflow, string $action, array $payload): WorkflowActionResult;
+    public function handleAction(WorkflowData $workflow, string $action, array $payload, string $lang): WorkflowActionResult;
 
     /**
      * Returns the complete set of task IDs that should currently exist for this workflow.
@@ -77,7 +77,7 @@ interface WorkflowTypeHandlerInterface
      *
      * @return array<string, mixed>
      */
-    public function getTaskResponse(WorkflowData $workflow, string $taskId): array;
+    public function getTaskResponse(WorkflowData $workflow, string $taskId, string $lang): array;
 
     /**
      * Periodic check called by the cron job, e.g. for sending reminder emails or

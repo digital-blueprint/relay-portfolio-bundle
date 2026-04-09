@@ -1,0 +1,16 @@
+dummy_workflow:
+    name:
+        untitled: 'Untitled'
+    state:
+        completed: 'Completed'
+        completed_desc: 'Workflow completed. Counter was: %count%'
+        waiting: 'Waiting'
+        waiting_desc: 'Waiting for input. Counter: %count%'
+    action:
+        increment: 'Increment Counter'
+        complete: 'Complete'
+        reset: 'Reset'
+        view: 'View Details'
+    message:
+        completed_title: 'Workflow completed'
+        completed_text: 'The workflow has been completed successfully.'

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Dbp\Relay\PortfolioBundle\Tests;
 
+use Dbp\Relay\CoreBundle\Locale\Locale;
 use Dbp\Relay\CoreBundle\TestUtils\DataProviderTester;
 use Dbp\Relay\PortfolioBundle\ApiPlatform\WorkflowItem;
 use Dbp\Relay\PortfolioBundle\ApiPlatform\WorkflowProvider;
@@ -24,7 +25,8 @@ class WorkflowProviderTest extends AbstractTestCase
         $workflowService = $this->container->get(WorkflowService::class);
         $workflowTypeHandlerRegistry = $this->container->get(WorkflowTypeHandlerRegistry::class);
         $authorizationService = $this->container->get(AuthorizationService::class);
-        $provider = new WorkflowProvider($workflowService, $workflowTypeHandlerRegistry, $authorizationService);
+        $locale = $this->container->get(Locale::class);
+        $provider = new WorkflowProvider($workflowService, $workflowTypeHandlerRegistry, $authorizationService, $locale);
         $this->tester = DataProviderTester::create($provider, WorkflowItem::class, ['PortfolioWorkflow:output']);
     }
 

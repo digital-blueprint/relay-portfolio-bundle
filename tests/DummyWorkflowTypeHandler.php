@@ -24,17 +24,17 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
         return self::TYPE;
     }
 
-    public function getName(WorkflowData $workflow): string
+    public function getName(WorkflowData $workflow, string $lang): string
     {
         return 'Dummy Workflow';
     }
 
-    public function getDescription(WorkflowData $workflow): string
+    public function getDescription(WorkflowData $workflow, string $lang): string
     {
         return 'A test workflow';
     }
 
-    public function getCurrentStateDisplay(WorkflowData $workflow): StateDisplay
+    public function getCurrentStateDisplay(WorkflowData $workflow, string $lang): StateDisplay
     {
         return new StateDisplay('Pending', 'Waiting for input');
     }
@@ -44,7 +44,7 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
         return true;
     }
 
-    public function getAvailableActions(WorkflowData $workflow): array
+    public function getAvailableActions(WorkflowData $workflow, string $lang): array
     {
         return [
             new Action(self::ACTION_PROCEED, 'Proceed'),
@@ -52,7 +52,7 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
         ];
     }
 
-    public function handleAction(WorkflowData $workflow, string $action, array $payload): WorkflowActionResult
+    public function handleAction(WorkflowData $workflow, string $action, array $payload, string $lang): WorkflowActionResult
     {
         if ($action === self::ACTION_PROCEED) {
             return new WorkflowActionResult(
@@ -82,7 +82,7 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
         return [];
     }
 
-    public function getTaskResponse(WorkflowData $workflow, string $taskId): array
+    public function getTaskResponse(WorkflowData $workflow, string $taskId, string $lang): array
     {
         return ['info' => 'computed from '.$workflow->getId()];
     }

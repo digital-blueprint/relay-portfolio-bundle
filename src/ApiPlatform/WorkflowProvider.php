@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Dbp\Relay\PortfolioBundle\ApiPlatform;
 
+use Dbp\Relay\CoreBundle\Locale\Locale;
 use Dbp\Relay\CoreBundle\Rest\AbstractDataProvider;
 use Dbp\Relay\PortfolioBundle\Authorization\AuthorizationService;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowData;
@@ -20,6 +21,7 @@ class WorkflowProvider extends AbstractDataProvider
         private readonly WorkflowService $workflowService,
         private readonly WorkflowTypeHandlerRegistry $workflowTypeHandlerRegistry,
         private readonly AuthorizationService $authorizationService,
+        private readonly Locale $locale,
     ) {
         parent::__construct();
     }
@@ -61,11 +63,12 @@ class WorkflowProvider extends AbstractDataProvider
         if ($includeHandlerData && $this->workflowTypeHandlerRegistry->hasHandler($workflow->getType())) {
             $handler = $this->workflowTypeHandlerRegistry->getHandler($workflow->getType());
             $workflowData = $this->toWorkflowData($workflow);
+            $lang = $this->locale->getCurrentPrimaryLanguage();
 
-            $item->setName($handler->getName($workflowData));
-            $item->setDescription($handler->getDescription($workflowData));
+            $item->setName($handler->getName($workflowData, $lang));
+            $item->setDescription($handler->getDescription($workflowData, $lang));
 
-            $stateDisplay = $handler->getCurrentStateDisplay($workflowData);
+            $stateDisplay = $handler->getCurrentStateDisplay($workflowData, $lang);
             $item->setCurrentStateDisplay([
                 'label' => $stateDisplay->getLabel(),
                 'description' => $stateDisplay->getDescription(),
@@ -80,7 +83,7 @@ class WorkflowProvider extends AbstractDataProvider
 
                     return $data;
                 },
-                $handler->getAvailableActions($workflowData)
+                $handler->getAvailableActions($workflowData, $lang)
             ));
         }
 
