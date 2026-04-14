@@ -83,12 +83,12 @@ class WorkflowService
     }
 
     /**
-     * Returns the workflow if it exists and the current user can view it, null otherwise.
+     * Returns the workflow if it exists and the current user can use it, null otherwise.
      */
     public function getWorkflow(string $id): ?WorkflowPersistence
     {
         $workflow = $this->em->getRepository(WorkflowPersistence::class)->find($id);
-        if ($workflow === null || !$this->canView($workflow)) {
+        if ($workflow === null || !$this->canUse($workflow)) {
             return null;
         }
 
@@ -104,7 +104,7 @@ class WorkflowService
         $workflows = $this->em->getRepository(WorkflowPersistence::class)
             ->findBy($criteria, ['createdAt' => 'DESC'], $maxNumItemsPerPage, ($currentPageNumber - 1) * $maxNumItemsPerPage);
 
-        return array_values(array_filter($workflows, fn ($w) => $this->canView($w)));
+        return array_values(array_filter($workflows, fn ($w) => $this->canUse($w)));
     }
 
     /**
@@ -118,7 +118,7 @@ class WorkflowService
     public function handleAction(string $workflowId, string $action, array $payload, string $lang): WorkflowActionResult
     {
         $workflow = $this->em->getRepository(WorkflowPersistence::class)->find($workflowId);
-        if ($workflow === null || !$this->canView($workflow)) {
+        if ($workflow === null || !$this->canUse($workflow)) {
             throw new NotFoundHttpException(sprintf("Workflow '%s' not found.", $workflowId));
         }
 
@@ -159,7 +159,7 @@ class WorkflowService
     // -------------------------------------------------------------------------
 
     /**
-     * Returns the task if it exists and the current user can view its workflow, null otherwise.
+     * Returns the task if it exists and the current user can use its workflow, null otherwise.
      */
     public function getTask(string $id): ?TaskPersistence
     {
@@ -169,7 +169,7 @@ class WorkflowService
         }
 
         $workflow = $task->getWorkflow();
-        if ($workflow === null || !$this->canView($workflow)) {
+        if ($workflow === null || !$this->canUse($workflow)) {
             return null;
         }
 
@@ -186,7 +186,7 @@ class WorkflowService
     public function getTasksForWorkflow(string $workflowId, int $currentPageNumber, int $maxNumItemsPerPage): array
     {
         $workflow = $this->em->getRepository(WorkflowPersistence::class)->find($workflowId);
-        if ($workflow === null || !$this->canView($workflow)) {
+        if ($workflow === null || !$this->canUse($workflow)) {
             throw new NotFoundHttpException(sprintf("Workflow '%s' not found.", $workflowId));
         }
 
@@ -208,7 +208,7 @@ class WorkflowService
     public function getTaskResponse(TaskPersistence $task, string $lang): array
     {
         $workflow = $task->getWorkflow();
-        if ($workflow === null || !$this->canView($workflow)) {
+        if ($workflow === null || !$this->canUse($workflow)) {
             throw new NotFoundHttpException(sprintf("Workflow for task '%s' not found.", $task->getId()));
         }
 
@@ -258,13 +258,13 @@ class WorkflowService
     // Internal helpers
     // -------------------------------------------------------------------------
 
-    private function canView(WorkflowPersistence $workflow): bool
+    private function canUse(WorkflowPersistence $workflow): bool
     {
         if (!$this->workflowTypeHandlerRegistry->hasHandler($workflow->getType())) {
             return false;
         }
 
-        return $this->workflowTypeHandlerRegistry->getHandler($workflow->getType())->canView($this->toWorkflowData($workflow));
+        return $this->workflowTypeHandlerRegistry->getHandler($workflow->getType())->canUse($this->toWorkflowData($workflow));
     }
 
     private function toWorkflowData(WorkflowPersistence $workflow): WorkflowData

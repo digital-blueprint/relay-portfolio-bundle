@@ -44,7 +44,7 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
         return new StateDisplay('Pending', 'Waiting for input');
     }
 
-    public function canView(WorkflowData $workflow): bool
+    public function canUse(WorkflowData $workflow): bool
     {
         return true;
     }

@@ -40,7 +40,7 @@ interface WorkflowTypeHandlerInterface
     public function getCurrentStateDisplay(WorkflowData $workflow, string $lang): StateDisplay;
 
     /**
-     * Returns whether the current user can view this workflow.
+     * Returns whether the current user can use this workflow.
      *
      * Used to gate both single-item and collection access, as well as
      * actions and task endpoints. Return false to respond with 404
@@ -48,7 +48,7 @@ interface WorkflowTypeHandlerInterface
      *
      * The current user is available via an injected UserSessionInterface.
      */
-    public function canView(WorkflowData $workflow): bool;
+    public function canUse(WorkflowData $workflow): bool;
 
     /**
      * Returns the actions available to the current user for this workflow.

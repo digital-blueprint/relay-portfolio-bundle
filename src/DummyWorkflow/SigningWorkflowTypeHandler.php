@@ -106,7 +106,7 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
         };
     }
 
-    public function canView(WorkflowData $workflow): bool
+    public function canUse(WorkflowData $workflow): bool
     {
         return true;
     }
