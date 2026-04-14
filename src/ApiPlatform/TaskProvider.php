@@ -9,6 +9,8 @@ use Dbp\Relay\CoreBundle\Rest\AbstractDataProvider;
 use Dbp\Relay\PortfolioBundle\Authorization\AuthorizationService;
 use Dbp\Relay\PortfolioBundle\Persistence\TaskPersistence;
 use Dbp\Relay\PortfolioBundle\Service\WorkflowService;
+use Symfony\Component\HttpFoundation\RequestStack;
+use Symfony\Component\HttpFoundation\UriSigner;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
 
 /**
@@ -20,13 +22,30 @@ class TaskProvider extends AbstractDataProvider
         private readonly WorkflowService $workflowService,
         private readonly AuthorizationService $authorizationService,
         private readonly Locale $locale,
+        private readonly UriSigner $uriSigner,
+        private readonly RequestStack $requestStack,
     ) {
         parent::__construct();
     }
 
+    protected function requiresAuthentication(int $operation): bool
+    {
+        if ($operation === self::GET_ITEM_OPERATION) {
+            return false;
+        }
+
+        return true;
+    }
+
     protected function getItemById(string $id, array $filters = [], array $options = []): ?TaskItem
     {
-        $this->authorizationService->checkCanUse();
+        if (!$this->authorizationService->getCanUse()) {
+            $request = $this->requestStack->getCurrentRequest();
+
+            if ($request === null || !$this->uriSigner->checkRequest($request)) {
+                $this->authorizationService->checkCanUse();
+            }
+        }
 
         $task = $this->workflowService->getTask($id);
         if ($task === null) {

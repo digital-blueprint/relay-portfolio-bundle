@@ -9,6 +9,7 @@ signing_workflow:
     action:
         sign: 'Dokumente signieren'
         check: 'Signaturstatus prüfen'
+        task: 'Aufgabe anzeigen'
     message:
         completed_title: 'Signatur abgeschlossen'
         completed_text: 'Alle %total% Dokument(e) wurden erfolgreich signiert.'

@@ -118,8 +118,8 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
         }
 
         $taskId = $this->getTaskId($workflow);
-
-        $fragment = rawurlencode($this->helper->getTaskUrl($taskId));
+        $signedUrl = $this->helper->getSignedTaskUrl($taskId);
+        $fragment = rawurlencode($signedUrl);
 
         return [
             new Action(
@@ -127,6 +127,12 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
                 $this->translator->trans('signing_workflow.action.sign', locale: $lang),
                 Action::TYPE_URL,
                 self::SIGNING_SERVICE_URL.'#'.$fragment,
+            ),
+            new Action(
+                self::ACTION_SIGN,
+                $this->translator->trans('signing_workflow.action.task', locale: $lang),
+                Action::TYPE_URL,
+                $signedUrl,
             ),
             new Action(
                 self::ACTION_CHECK,
