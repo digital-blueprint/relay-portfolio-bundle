@@ -81,4 +81,25 @@ class WorkflowProviderTest extends AbstractTestCase
             ['id' => DummyWorkflowTypeHandler::ACTION_CANCEL, 'label' => 'Cancel', 'type' => Action::TYPE_ACTION],
         ], $items[0]->getAvailableActions());
     }
+
+    public function testGetItemCanUseReturnsFalseGives404(): void
+    {
+        $this->testEntityManager->addWorkflow('wf-1', DummyWorkflowTypeHandler::TYPE);
+
+        $handler = $this->container->get(DummyWorkflowTypeHandler::class);
+        $handler->canUse = false;
+
+        $this->assertNull($this->tester->getItem('wf-1'));
+    }
+
+    public function testGetCollectionFiltersOutCanUseFalse(): void
+    {
+        $this->testEntityManager->addWorkflow('wf-1', DummyWorkflowTypeHandler::TYPE);
+        $this->testEntityManager->addWorkflow('wf-2', DummyWorkflowTypeHandler::TYPE);
+
+        $handler = $this->container->get(DummyWorkflowTypeHandler::class);
+        $handler->canUse = false;
+
+        $this->assertSame([], $this->tester->getCollection());
+    }
 }

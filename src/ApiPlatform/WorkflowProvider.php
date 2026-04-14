@@ -31,7 +31,7 @@ class WorkflowProvider extends AbstractDataProvider
         $this->authorizationService->checkCanUse();
 
         $workflow = $this->workflowService->getWorkflow($id);
-        if ($workflow === null) {
+        if ($workflow === null || !$this->workflowService->canUse($workflow)) {
             return null;
         }
 
@@ -48,7 +48,10 @@ class WorkflowProvider extends AbstractDataProvider
         $type = $filters['type'] ?? null;
         $workflows = $this->workflowService->getWorkflows($currentPageNumber, $maxNumItemsPerPage, $type);
 
-        return array_map(fn (WorkflowPersistence $w) => $this->toWorkflowItem($w, includeHandlerData: true), $workflows);
+        return array_values(array_map(
+            fn (WorkflowPersistence $w) => $this->toWorkflowItem($w, includeHandlerData: true),
+            array_filter($workflows, fn (WorkflowPersistence $w) => $this->workflowService->canUse($w))
+        ));
     }
 
     private function toWorkflowItem(WorkflowPersistence $workflow, bool $includeHandlerData): WorkflowItem

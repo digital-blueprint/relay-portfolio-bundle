@@ -83,16 +83,11 @@ class WorkflowService
     }
 
     /**
-     * Returns the workflow if it exists and the current user can use it, null otherwise.
+     * Returns the workflow if it exists, null otherwise.
      */
     public function getWorkflow(string $id): ?WorkflowPersistence
     {
-        $workflow = $this->em->getRepository(WorkflowPersistence::class)->find($id);
-        if ($workflow === null || !$this->canUse($workflow)) {
-            return null;
-        }
-
-        return $workflow;
+        return $this->em->getRepository(WorkflowPersistence::class)->find($id);
     }
 
     /**
@@ -101,10 +96,9 @@ class WorkflowService
     public function getWorkflows(int $currentPageNumber, int $maxNumItemsPerPage, ?string $type = null): array
     {
         $criteria = $type !== null ? ['type' => $type] : [];
-        $workflows = $this->em->getRepository(WorkflowPersistence::class)
-            ->findBy($criteria, ['createdAt' => 'DESC'], $maxNumItemsPerPage, ($currentPageNumber - 1) * $maxNumItemsPerPage);
 
-        return array_values(array_filter($workflows, fn ($w) => $this->canUse($w)));
+        return $this->em->getRepository(WorkflowPersistence::class)
+            ->findBy($criteria, ['createdAt' => 'DESC'], $maxNumItemsPerPage, ($currentPageNumber - 1) * $maxNumItemsPerPage);
     }
 
     /**
@@ -112,13 +106,13 @@ class WorkflowService
      *
      * @param array<string, mixed> $payload
      *
-     * @throws NotFoundHttpException   if the workflow does not exist or is not visible to the current user
+     * @throws NotFoundHttpException   if the workflow does not exist
      * @throws BadRequestHttpException if the action is not available
      */
     public function handleAction(string $workflowId, string $action, array $payload, string $lang): WorkflowActionResult
     {
         $workflow = $this->em->getRepository(WorkflowPersistence::class)->find($workflowId);
-        if ($workflow === null || !$this->canUse($workflow)) {
+        if ($workflow === null) {
             throw new NotFoundHttpException(sprintf("Workflow '%s' not found.", $workflowId));
         }
 
@@ -159,21 +153,11 @@ class WorkflowService
     // -------------------------------------------------------------------------
 
     /**
-     * Returns the task if it exists and the current user can use its workflow, null otherwise.
+     * Returns the task if it exists, null otherwise.
      */
     public function getTask(string $id): ?TaskPersistence
     {
-        $task = $this->em->getRepository(TaskPersistence::class)->find($id);
-        if ($task === null) {
-            return null;
-        }
-
-        $workflow = $task->getWorkflow();
-        if ($workflow === null || !$this->canUse($workflow)) {
-            return null;
-        }
-
-        return $task;
+        return $this->em->getRepository(TaskPersistence::class)->find($id);
     }
 
     /**
@@ -181,12 +165,12 @@ class WorkflowService
      *
      * @return TaskPersistence[]
      *
-     * @throws NotFoundHttpException if the workflow does not exist or is not visible to the current user
+     * @throws NotFoundHttpException if the workflow does not exist
      */
     public function getTasksForWorkflow(string $workflowId, int $currentPageNumber, int $maxNumItemsPerPage): array
     {
         $workflow = $this->em->getRepository(WorkflowPersistence::class)->find($workflowId);
-        if ($workflow === null || !$this->canUse($workflow)) {
+        if ($workflow === null) {
             throw new NotFoundHttpException(sprintf("Workflow '%s' not found.", $workflowId));
         }
 
@@ -203,12 +187,12 @@ class WorkflowService
      *
      * @return array<string, mixed>
      *
-     * @throws NotFoundHttpException if the task or its workflow does not exist or is not visible
+     * @throws NotFoundHttpException if the task's workflow does not exist
      */
     public function getTaskResponse(TaskPersistence $task, string $lang): array
     {
         $workflow = $task->getWorkflow();
-        if ($workflow === null || !$this->canUse($workflow)) {
+        if ($workflow === null) {
             throw new NotFoundHttpException(sprintf("Workflow for task '%s' not found.", $task->getId()));
         }
 
@@ -258,13 +242,14 @@ class WorkflowService
     // Internal helpers
     // -------------------------------------------------------------------------
 
-    private function canUse(WorkflowPersistence $workflow): bool
+    public function canUse(WorkflowPersistence $workflow): bool
     {
         if (!$this->workflowTypeHandlerRegistry->hasHandler($workflow->getType())) {
             return false;
         }
 
-        return $this->workflowTypeHandlerRegistry->getHandler($workflow->getType())->canUse($this->toWorkflowData($workflow));
+        return $this->workflowTypeHandlerRegistry->getHandler($workflow->getType())
+            ->canUse($this->toWorkflowData($workflow));
     }
 
     private function toWorkflowData(WorkflowPersistence $workflow): WorkflowData

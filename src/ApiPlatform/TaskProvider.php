@@ -12,6 +12,7 @@ use Dbp\Relay\PortfolioBundle\Service\WorkflowService;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\HttpFoundation\UriSigner;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /**
  * @extends AbstractDataProvider<TaskItem>
@@ -39,17 +40,26 @@ class TaskProvider extends AbstractDataProvider
 
     protected function getItemById(string $id, array $filters = [], array $options = []): ?TaskItem
     {
+        $signedUrlAccess = false;
         if (!$this->authorizationService->getCanUse()) {
             $request = $this->requestStack->getCurrentRequest();
 
             if ($request === null || !$this->uriSigner->checkRequest($request)) {
                 $this->authorizationService->checkCanUse();
             }
+            $signedUrlAccess = true;
         }
 
         $task = $this->workflowService->getTask($id);
         if ($task === null) {
             return null;
+        }
+
+        if (!$signedUrlAccess) {
+            $workflow = $task->getWorkflow();
+            if ($workflow === null || !$this->workflowService->canUse($workflow)) {
+                return null;
+            }
         }
 
         $taskData = $this->workflowService->getTaskResponse($task, $this->locale->getCurrentPrimaryLanguage());
@@ -67,6 +77,11 @@ class TaskProvider extends AbstractDataProvider
         $workflowId = $filters['workflowId'] ?? null;
         if ($workflowId === null || $workflowId === '') {
             throw new BadRequestHttpException('The workflowId filter is required.');
+        }
+
+        $workflow = $this->workflowService->getWorkflow($workflowId);
+        if ($workflow === null || !$this->workflowService->canUse($workflow)) {
+            throw new NotFoundHttpException();
         }
 
         $tasks = $this->workflowService->getTasksForWorkflow($workflowId, $currentPageNumber, $maxNumItemsPerPage);

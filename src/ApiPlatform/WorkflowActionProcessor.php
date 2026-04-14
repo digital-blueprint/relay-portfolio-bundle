@@ -9,6 +9,7 @@ use Dbp\Relay\CoreBundle\Rest\AbstractDataProcessor;
 use Dbp\Relay\PortfolioBundle\Authorization\AuthorizationService;
 use Dbp\Relay\PortfolioBundle\Service\WorkflowService;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Symfony\Component\Uid\Uuid;
 
 class WorkflowActionProcessor extends AbstractDataProcessor
@@ -35,6 +36,11 @@ class WorkflowActionProcessor extends AbstractDataProcessor
         }
         if ($action === null) {
             throw new BadRequestHttpException('action is required.');
+        }
+
+        $workflow = $this->workflowService->getWorkflow($workflowId);
+        if ($workflow === null || !$this->workflowService->canUse($workflow)) {
+            throw new NotFoundHttpException(sprintf("Workflow '%s' not found.", $workflowId));
         }
 
         $result = $this->workflowService->handleAction($workflowId, $action, $data->getPayload(), $this->locale->getCurrentPrimaryLanguage());

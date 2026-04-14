@@ -18,6 +18,7 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
     public const ACTION_CANCEL = 'cancel';
 
     public int $pingCallCount = 0;
+    public bool $canUse = true;
 
     public function create(array $input): array
     {
@@ -46,7 +47,7 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
 
     public function canUse(WorkflowData $workflow): bool
     {
-        return true;
+        return $this->canUse;
     }
 
     public function getAvailableActions(WorkflowData $workflow, string $lang): array

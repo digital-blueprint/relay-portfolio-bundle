@@ -63,6 +63,17 @@ class WorkflowActionProcessorTest extends AbstractTestCase
         $this->tester->addItem($this->makeAction('no-such-id', DummyWorkflowTypeHandler::ACTION_PROCEED));
     }
 
+    public function testAddItemCanUseReturnsFalseGives404(): void
+    {
+        $this->testEntityManager->addWorkflow('wf-1', DummyWorkflowTypeHandler::TYPE);
+
+        $handler = $this->container->get(DummyWorkflowTypeHandler::class);
+        $handler->canUse = false;
+
+        $this->expectException(NotFoundHttpException::class);
+        $this->tester->addItem($this->makeAction('wf-1', DummyWorkflowTypeHandler::ACTION_PROCEED));
+    }
+
     public function testAddItemUnavailableAction(): void
     {
         $this->testEntityManager->addWorkflow('wf-1', DummyWorkflowTypeHandler::TYPE);

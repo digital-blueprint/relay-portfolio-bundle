@@ -16,6 +16,7 @@ use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\HttpFoundation\UriSigner;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 class TaskProviderTest extends AbstractTestCase
 {
@@ -72,6 +73,32 @@ class TaskProviderTest extends AbstractTestCase
 
         $items = $this->tester->getCollection(['workflowId' => 'wf-1']);
         $this->assertCount(2, $items);
+    }
+
+    // -------------------------------------------------------------------------
+    // canUse() enforcement
+    // -------------------------------------------------------------------------
+
+    public function testGetItemCanUseReturnsFalseGivesNull(): void
+    {
+        $workflow = $this->testEntityManager->addWorkflow('wf-1', DummyWorkflowTypeHandler::TYPE);
+        $this->testEntityManager->addTask('t-1', $workflow);
+
+        $handler = $this->container->get(DummyWorkflowTypeHandler::class);
+        $handler->canUse = false;
+
+        $this->assertNull($this->tester->getItem('t-1'));
+    }
+
+    public function testGetCollectionCanUseReturnsFalseGives404(): void
+    {
+        $this->testEntityManager->addWorkflow('wf-1', DummyWorkflowTypeHandler::TYPE);
+
+        $handler = $this->container->get(DummyWorkflowTypeHandler::class);
+        $handler->canUse = false;
+
+        $this->expectException(NotFoundHttpException::class);
+        $this->tester->getCollection(['workflowId' => 'wf-1']);
     }
 
     // -------------------------------------------------------------------------
@@ -145,6 +172,24 @@ class TaskProviderTest extends AbstractTestCase
 
         $this->expectException(AccessDeniedHttpException::class);
         $tester->getItem('t-other');
+    }
+
+    public function testSignedUrlBypassesCanUse(): void
+    {
+        $workflow = $this->testEntityManager->addWorkflow('wf-canuse', DummyWorkflowTypeHandler::TYPE);
+        $this->testEntityManager->addTask('t-canuse', $workflow);
+
+        // canUse() returns false, but signed URL should still allow access
+        $handler = $this->container->get(DummyWorkflowTypeHandler::class);
+        $handler->canUse = false;
+
+        $signedUrl = $this->handlerHelper->getSignedTaskUrl('t-canuse');
+        $tester = $this->makeProviderDeniedWithRequest(Request::create($signedUrl));
+
+        /** @var TaskItem $item */
+        $item = $tester->getItem('t-canuse');
+        $this->assertNotNull($item);
+        $this->assertSame('t-canuse', $item->getIdentifier());
     }
 
     public function testExpiredSignedUrlIsRejected(): void
