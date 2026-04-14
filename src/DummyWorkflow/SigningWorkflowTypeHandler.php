@@ -193,7 +193,7 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
                 continue;
             }
             $result[] = [
-                'id' => $taskId.'_'.$doc['id'],
+                'workflowTrackingId' => $taskId.'_'.$doc['id'],
                 'url' => $doc['url'],
                 'x' => $doc['x'],
                 'y' => $doc['y'],

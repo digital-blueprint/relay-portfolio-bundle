@@ -192,14 +192,14 @@ class SigningWorkflowTest extends AbstractTestCase
 
         $taskId = $workflow->getInternalState()['taskId'];
 
-        $this->assertStringStartsWith($taskId.'_', $docs[0]['id']);
+        $this->assertStringStartsWith($taskId.'_', $docs[0]['workflowTrackingId']);
         $this->assertSame('https://example.com/doc1.pdf', $docs[0]['url']);
         $this->assertSame(100, $docs[0]['x']);
         $this->assertSame(200, $docs[0]['y']);
         $this->assertSame(1, $docs[0]['page']);
         $this->assertArrayNotHasKey('signed', $docs[0]);
 
-        $this->assertStringStartsWith($taskId.'_', $docs[1]['id']);
+        $this->assertStringStartsWith($taskId.'_', $docs[1]['workflowTrackingId']);
         $this->assertSame('https://example.com/doc2.pdf', $docs[1]['url']);
         $this->assertSame(50, $docs[1]['x']);
         $this->assertSame(300, $docs[1]['y']);
@@ -226,7 +226,7 @@ class SigningWorkflowTest extends AbstractTestCase
 
         // Only the unsigned document is returned
         $this->assertCount(1, $docs);
-        $this->assertSame('task-uuid-partial_doc-uuid-2', $docs[0]['id']);
+        $this->assertSame('task-uuid-partial_doc-uuid-2', $docs[0]['workflowTrackingId']);
         $this->assertArrayNotHasKey('signed', $docs[0]);
     }
 
