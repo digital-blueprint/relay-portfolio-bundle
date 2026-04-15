@@ -22,6 +22,8 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
     public int $cleanupCallCount = 0;
     public bool $cleanupDone = true;
     public bool $canUse = true;
+    /** @var string[] IDs for which canUse() returns false */
+    public array $blockedIds = [];
 
     public function create(array $input): array
     {
@@ -50,6 +52,10 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
 
     public function canUse(WorkflowData $workflow): bool
     {
+        if (in_array($workflow->getId(), $this->blockedIds, true)) {
+            return false;
+        }
+
         return $this->canUse;
     }
 

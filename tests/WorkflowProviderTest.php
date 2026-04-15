@@ -102,4 +102,34 @@ class WorkflowProviderTest extends AbstractTestCase
 
         $this->assertSame([], $this->tester->getCollection());
     }
+
+    public function testGetCollectionPaginationCorrectWithCanUseFilter(): void
+    {
+        // DB order is createdAt DESC, so wf-5 comes first, wf-1 last.
+        // wf-4 and wf-2 are blocked. Passing items in order: wf-5, wf-3, wf-1.
+        $base = new \DateTimeImmutable('2020-01-01T00:00:00Z');
+        $this->testEntityManager->addWorkflow('wf-1', DummyWorkflowTypeHandler::TYPE, createdAt: $base->modify('+1 second'));
+        $this->testEntityManager->addWorkflow('wf-2', DummyWorkflowTypeHandler::TYPE, createdAt: $base->modify('+2 seconds'));
+        $this->testEntityManager->addWorkflow('wf-3', DummyWorkflowTypeHandler::TYPE, createdAt: $base->modify('+3 seconds'));
+        $this->testEntityManager->addWorkflow('wf-4', DummyWorkflowTypeHandler::TYPE, createdAt: $base->modify('+4 seconds'));
+        $this->testEntityManager->addWorkflow('wf-5', DummyWorkflowTypeHandler::TYPE, createdAt: $base->modify('+5 seconds'));
+
+        $handler = $this->container->get(DummyWorkflowTypeHandler::class);
+        $handler->blockedIds = ['wf-2', 'wf-4'];
+
+        // Page 1, 2 per page → wf-5, wf-3
+        $page1 = $this->tester->getPage(pageNumber: 1, maxNumItemsPerPage: 2);
+        $this->assertCount(2, $page1);
+        $this->assertSame('wf-5', $page1[0]->getIdentifier());
+        $this->assertSame('wf-3', $page1[1]->getIdentifier());
+
+        // Page 2, 2 per page → wf-1
+        $page2 = $this->tester->getPage(pageNumber: 2, maxNumItemsPerPage: 2);
+        $this->assertCount(1, $page2);
+        $this->assertSame('wf-1', $page2[0]->getIdentifier());
+
+        // Page 3 → empty
+        $page3 = $this->tester->getPage(pageNumber: 3, maxNumItemsPerPage: 2);
+        $this->assertCount(0, $page3);
+    }
 }

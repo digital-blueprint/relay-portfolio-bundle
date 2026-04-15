@@ -70,7 +70,7 @@ class WorkflowServiceTest extends AbstractTestCase
 
     public function testGetWorkflowsEmpty(): void
     {
-        $this->assertSame([], $this->service->getWorkflows(1, 10));
+        $this->assertSame([], $this->service->getWorkflows(0, 10));
     }
 
     public function testGetWorkflows(): void
@@ -78,7 +78,7 @@ class WorkflowServiceTest extends AbstractTestCase
         $this->testEntityManager->addWorkflow('wf-1', DummyWorkflowTypeHandler::TYPE);
         $this->testEntityManager->addWorkflow('wf-2', DummyWorkflowTypeHandler::TYPE);
 
-        $this->assertCount(2, $this->service->getWorkflows(1, 10));
+        $this->assertCount(2, $this->service->getWorkflows(0, 10));
     }
 
     // -------------------------------------------------------------------------

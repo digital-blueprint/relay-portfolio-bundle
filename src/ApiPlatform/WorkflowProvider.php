@@ -46,12 +46,35 @@ class WorkflowProvider extends AbstractDataProvider
         $this->authorizationService->checkCanUse();
 
         $type = $filters['type'] ?? null;
-        $workflows = $this->workflowService->getWorkflows($currentPageNumber, $maxNumItemsPerPage, $type);
+        $result = [];
+        $toSkip = ($currentPageNumber - 1) * $maxNumItemsPerPage;
+        $skipped = 0;
+        $dbOffset = 0;
 
-        return array_values(array_map(
-            fn (WorkflowPersistence $w) => $this->toWorkflowItem($w, includeHandlerData: true),
-            array_filter($workflows, fn (WorkflowPersistence $w) => $this->workflowService->canUse($w))
-        ));
+        while (count($result) < $maxNumItemsPerPage) {
+            $batch = $this->workflowService->getWorkflows($dbOffset, $maxNumItemsPerPage, $type);
+            if (count($batch) === 0) {
+                break;
+            }
+
+            foreach ($batch as $workflow) {
+                if (!$this->workflowService->canUse($workflow)) {
+                    continue;
+                }
+                if ($skipped < $toSkip) {
+                    ++$skipped;
+                    continue;
+                }
+                $result[] = $this->toWorkflowItem($workflow, includeHandlerData: true);
+                if (count($result) === $maxNumItemsPerPage) {
+                    break 2;
+                }
+            }
+
+            $dbOffset += $maxNumItemsPerPage;
+        }
+
+        return $result;
     }
 
     private function toWorkflowItem(WorkflowPersistence $workflow, bool $includeHandlerData): WorkflowItem

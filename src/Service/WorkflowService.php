@@ -138,13 +138,13 @@ class WorkflowService implements LoggerAwareInterface
     /**
      * @return WorkflowPersistence[]
      */
-    public function getWorkflows(int $currentPageNumber, int $maxNumItemsPerPage, ?string $type = null): array
+    public function getWorkflows(int $offset, int $limit, ?string $type = null): array
     {
         $qb = $this->em->getRepository(WorkflowPersistence::class)->createQueryBuilder('w');
         $qb->where($qb->expr()->isNull('w.deletedAt'))
             ->orderBy('w.createdAt', 'DESC')
-            ->setMaxResults($maxNumItemsPerPage)
-            ->setFirstResult(($currentPageNumber - 1) * $maxNumItemsPerPage);
+            ->setMaxResults($limit)
+            ->setFirstResult($offset);
 
         if ($type !== null) {
             $qb->andWhere('w.type = :type')->setParameter('type', $type);

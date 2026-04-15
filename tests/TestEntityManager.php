@@ -24,15 +24,16 @@ class TestEntityManager extends CoreTestEntityManager
         return self::setUpEntityManager($container, self::ENTITY_MANAGER_ID);
     }
 
-    public function addWorkflow(string $id, string $type, string $state = WorkflowPersistence::STATE_ACTIVE, array $internalState = [], ?\DateTimeImmutable $deletedAt = null): WorkflowPersistence
+    public function addWorkflow(string $id, string $type, string $state = WorkflowPersistence::STATE_ACTIVE, array $internalState = [], ?\DateTimeImmutable $deletedAt = null, ?\DateTimeImmutable $createdAt = null): WorkflowPersistence
     {
+        $now = $createdAt ?? new \DateTimeImmutable();
         $workflow = new WorkflowPersistence();
         $workflow->setId($id);
         $workflow->setType($type);
         $workflow->setState($state);
         $workflow->setInternalState($internalState);
-        $workflow->setCreatedAt(new \DateTimeImmutable());
-        $workflow->setUpdatedAt(new \DateTimeImmutable());
+        $workflow->setCreatedAt($now);
+        $workflow->setUpdatedAt($now);
         $workflow->setDeletedAt($deletedAt);
         $this->saveEntity($workflow);
 
