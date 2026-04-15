@@ -91,6 +91,8 @@ class WorkflowActionProcessorTest extends AbstractTestCase
 
         $this->assertInstanceOf(WorkflowAction::class, $result);
         $this->assertNotNull($result->getIdentifier());
+        $this->assertSame('message', $result->getType());
+        $this->assertNull($result->getUrl());
 
         $msg = $result->getMessage();
         $this->assertInstanceOf(WorkflowResultMessage::class, $msg);

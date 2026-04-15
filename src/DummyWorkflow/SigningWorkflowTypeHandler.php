@@ -42,6 +42,7 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
     public const TYPE = 'signing';
     public const SIGNING_SERVICE_URL = 'https://dbp-dev.tugraz.at/apps/esign';
     public const ACTION_SIGN = 'sign';
+    public const ACTION_SHOW_TASK = 'show-task';
     public const ACTION_CHECK = 'check';
 
     private readonly Translator $translator;
@@ -117,23 +118,14 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
             return [];
         }
 
-        $taskId = $this->getTaskId($workflow);
-        $signedUrl = $this->helper->getSignedTaskUrl($taskId);
-        $fragment = rawurlencode($signedUrl);
-        $path = '/'.rawurlencode($lang).'/predefined-signature';
-
         return [
             new Action(
                 self::ACTION_SIGN,
                 $this->translator->trans('signing_workflow.action.sign', locale: $lang),
-                Action::TYPE_URL,
-                self::SIGNING_SERVICE_URL.$path.'#'.$fragment,
             ),
             new Action(
-                self::ACTION_SIGN,
+                self::ACTION_SHOW_TASK,
                 $this->translator->trans('signing_workflow.action.task', locale: $lang),
-                Action::TYPE_URL,
-                $signedUrl,
             ),
             new Action(
                 self::ACTION_CHECK,
@@ -148,6 +140,24 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
         $documents = $internalState['documents'] ?? [];
         $total = count($documents);
         $signed = count(array_filter($documents, fn (array $doc) => $doc['signed'] ?? false));
+
+        if ($action === self::ACTION_SIGN || $action === self::ACTION_SHOW_TASK) {
+            $taskId = $this->getTaskId($workflow);
+            $signedUrl = $this->helper->getSignedTaskUrl($taskId);
+
+            if ($action === self::ACTION_SIGN) {
+                $fragment = rawurlencode($signedUrl);
+                $path = '/'.rawurlencode($lang).'/predefined-signature';
+                $url = self::SIGNING_SERVICE_URL.$path.'#'.$fragment;
+            } else {
+                $url = $signedUrl;
+            }
+
+            return new WorkflowActionResult(
+                internalState: $internalState,
+                url: $url,
+            );
+        }
 
         if ($signed === $total && $total > 0) {
             return new WorkflowActionResult(

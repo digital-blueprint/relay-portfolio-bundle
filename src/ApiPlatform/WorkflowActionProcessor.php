@@ -46,8 +46,19 @@ class WorkflowActionProcessor extends AbstractDataProcessor
         $result = $this->workflowService->handleAction($workflowId, $action, $data->getPayload(), $this->locale->getCurrentPrimaryLanguage());
 
         $data->setIdentifier(Uuid::v4()->toRfc4122());
+
         $message = $result->getMessage();
-        $data->setMessage($message !== null ? WorkflowResultMessage::fromMessage($message) : null);
+        $url = $result->getUrl();
+
+        if ($message !== null) {
+            $data->setType('message');
+            $data->setMessage(WorkflowResultMessage::fromMessage($message));
+        } elseif ($url !== null) {
+            $data->setType('url');
+            $data->setUrl($url);
+        } else {
+            $data->setType(null);
+        }
 
         return $data;
     }

@@ -60,6 +60,12 @@ class WorkflowAction
     #[ApiProperty(readableLink: true, genId: false)]
     private ?WorkflowResultMessage $message = null;
 
+    #[Groups(['PortfolioWorkflowAction:output'])]
+    private ?string $type = null;
+
+    #[Groups(['PortfolioWorkflowAction:output'])]
+    private ?string $url = null;
+
     public function getIdentifier(): ?string
     {
         return $this->identifier;
@@ -114,5 +120,25 @@ class WorkflowAction
     public function setMessage(?WorkflowResultMessage $message): void
     {
         $this->message = $message;
+    }
+
+    public function getType(): ?string
+    {
+        return $this->type;
+    }
+
+    public function setType(?string $type): void
+    {
+        $this->type = $type;
+    }
+
+    public function getUrl(): ?string
+    {
+        return $this->url;
+    }
+
+    public function setUrl(?string $url): void
+    {
+        $this->url = $url;
     }
 }

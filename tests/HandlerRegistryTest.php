@@ -88,6 +88,18 @@ class HandlerRegistryTest extends TestCase
         $this->assertSame(['key' => 'val'], $result->getInternalState());
         $this->assertSame(WorkflowPersistence::STATE_DONE, $result->getState());
         $this->assertSame($message, $result->getMessage());
+        $this->assertNull($result->getUrl());
+    }
+
+    public function testWorkflowActionResultWithUrl(): void
+    {
+        $result = new WorkflowActionResult(
+            internalState: ['key' => 'val'],
+            url: 'https://example.com/signed?token=abc',
+        );
+
+        $this->assertSame('https://example.com/signed?token=abc', $result->getUrl());
+        $this->assertNull($result->getMessage());
     }
 
     public function testWorkflowActionResultDefaults(): void
@@ -96,6 +108,18 @@ class HandlerRegistryTest extends TestCase
 
         $this->assertNull($result->getState());
         $this->assertNull($result->getMessage());
+        $this->assertNull($result->getUrl());
+    }
+
+    public function testWorkflowActionResultMessageAndUrlThrows(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        new WorkflowActionResult(
+            internalState: [],
+            message: new WorkflowMessage(WorkflowMessage::TYPE_INFO, 'title', 'text'),
+            url: 'https://example.com',
+        );
     }
 
     public function testWorkflowMessage(): void

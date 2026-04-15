@@ -231,17 +231,16 @@ class SigningWorkflowTest extends AbstractTestCase
     }
 
     // -------------------------------------------------------------------------
-    // Sign action (TYPE_URL)
+    // Sign action
     // -------------------------------------------------------------------------
 
-    public function testSignActionUrlContainsTaskId(): void
+    public function testSignActionIsTypeAction(): void
     {
         $workflow = $this->service->createWorkflow(
             SigningWorkflowTypeHandler::TYPE,
             ['documents' => $this->twoDocumentInput],
         );
 
-        $taskId = $workflow->getInternalState()['taskId'];
         $actions = $this->handler->getAvailableActions($this->toWorkflowData($workflow), 'en');
 
         $signAction = null;
@@ -253,9 +252,23 @@ class SigningWorkflowTest extends AbstractTestCase
         }
 
         $this->assertNotNull($signAction);
-        $this->assertSame(Action::TYPE_URL, $signAction->getType());
-        $this->assertStringStartsWith(SigningWorkflowTypeHandler::SIGNING_SERVICE_URL, $signAction->getUrl());
-        $this->assertStringContainsString($taskId, $signAction->getUrl());
+        $this->assertSame(Action::TYPE_ACTION, $signAction->getType());
+    }
+
+    public function testSignActionReturnsUrlContainingTaskId(): void
+    {
+        $workflow = $this->service->createWorkflow(
+            SigningWorkflowTypeHandler::TYPE,
+            ['documents' => $this->twoDocumentInput],
+        );
+
+        $taskId = $workflow->getInternalState()['taskId'];
+        $result = $this->handler->handleAction($this->toWorkflowData($workflow), SigningWorkflowTypeHandler::ACTION_SIGN, [], 'en');
+
+        $this->assertNull($result->getMessage());
+        $this->assertNotNull($result->getUrl());
+        $this->assertStringStartsWith(SigningWorkflowTypeHandler::SIGNING_SERVICE_URL, $result->getUrl());
+        $this->assertStringContainsString($taskId, $result->getUrl());
     }
 
     public function testCheckActionIsAvailableWhileActive(): void
