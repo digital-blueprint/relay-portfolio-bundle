@@ -40,7 +40,7 @@ use Symfony\Component\Uid\Uuid;
 class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
 {
     public const TYPE = 'signing';
-    public const SIGNING_SERVICE_URL = 'https://dbp-dev.tugraz.at/apps/esign/';
+    public const SIGNING_SERVICE_URL = 'https://dbp-dev.tugraz.at/apps/esign';
     public const ACTION_SIGN = 'sign';
     public const ACTION_CHECK = 'check';
 
@@ -120,13 +120,14 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
         $taskId = $this->getTaskId($workflow);
         $signedUrl = $this->helper->getSignedTaskUrl($taskId);
         $fragment = rawurlencode($signedUrl);
+        $path = '/'.rawurlencode($lang).'/predefined-signature';
 
         return [
             new Action(
                 self::ACTION_SIGN,
                 $this->translator->trans('signing_workflow.action.sign', locale: $lang),
                 Action::TYPE_URL,
-                self::SIGNING_SERVICE_URL.'#'.$fragment,
+                self::SIGNING_SERVICE_URL.$path.'#'.$fragment,
             ),
             new Action(
                 self::ACTION_SIGN,
@@ -198,6 +199,7 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
                 'x' => $doc['x'],
                 'y' => $doc['y'],
                 'page' => $doc['page'],
+                'profile' => $doc['profile'],
             ];
         }
 

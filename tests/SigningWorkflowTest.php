@@ -21,8 +21,8 @@ class SigningWorkflowTest extends AbstractTestCase
      * @var array<int, array{url: string, x: int, y: int, page: int}>
      */
     private array $twoDocumentInput = [
-        ['url' => 'https://example.com/doc1.pdf', 'x' => 100, 'y' => 200, 'page' => 1],
-        ['url' => 'https://example.com/doc2.pdf', 'x' => 50, 'y' => 300, 'page' => 2],
+        ['url' => 'https://example.com/doc1.pdf', 'x' => 100, 'y' => 200, 'page' => 1, 'profile' => 'official'],
+        ['url' => 'https://example.com/doc2.pdf', 'x' => 50, 'y' => 300, 'page' => 2, 'profile' => 'official'],
     ];
 
     protected function setUp(): void
@@ -214,8 +214,8 @@ class SigningWorkflowTest extends AbstractTestCase
             SigningWorkflowTypeHandler::TYPE,
             WorkflowPersistence::STATE_ACTIVE,
             $this->buildInternalState('task-uuid-partial', [
-                ['id' => 'doc-uuid-1', 'url' => 'https://example.com/doc1.pdf', 'x' => 100, 'y' => 200, 'page' => 1, 'signed' => true],
-                ['id' => 'doc-uuid-2', 'url' => 'https://example.com/doc2.pdf', 'x' => 50, 'y' => 300, 'page' => 2, 'signed' => false],
+                ['id' => 'doc-uuid-1', 'url' => 'https://example.com/doc1.pdf', 'x' => 100, 'y' => 200, 'page' => 1, 'signed' => true, 'profile' => 'official'],
+                ['id' => 'doc-uuid-2', 'url' => 'https://example.com/doc2.pdf', 'x' => 50, 'y' => 300, 'page' => 2, 'signed' => false, 'profile' => 'official'],
             ]),
         );
         $this->testEntityManager->addTask('task-uuid-partial', $workflow);
@@ -254,7 +254,7 @@ class SigningWorkflowTest extends AbstractTestCase
 
         $this->assertNotNull($signAction);
         $this->assertSame(Action::TYPE_URL, $signAction->getType());
-        $this->assertStringStartsWith(SigningWorkflowTypeHandler::SIGNING_SERVICE_URL.'#', $signAction->getUrl());
+        $this->assertStringStartsWith(SigningWorkflowTypeHandler::SIGNING_SERVICE_URL, $signAction->getUrl());
         $this->assertStringContainsString($taskId, $signAction->getUrl());
     }
 
