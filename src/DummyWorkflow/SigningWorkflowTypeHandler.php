@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Dbp\Relay\PortfolioBundle\DummyWorkflow;
 
 use Dbp\Relay\PortfolioBundle\Handler\Action;
+use Dbp\Relay\PortfolioBundle\Handler\CleanupResult;
 use Dbp\Relay\PortfolioBundle\Handler\StateDisplay;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowActionResult;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowData;
@@ -219,6 +220,15 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
     public function ping(WorkflowData $workflow): ?WorkflowActionResult
     {
         return null;
+    }
+
+    public function cleanup(WorkflowData $workflow): CleanupResult
+    {
+        // No long-lived external session to cancel for this example handler —
+        // the signing service only holds a signed URL that expires on its own.
+        // A real implementation would cancel any pending signing session here
+        // and return CleanupResult(done: false, ...) until confirmation is received.
+        return new CleanupResult(done: true, internalState: $workflow->getInternalState());
     }
 
     private function getTaskId(WorkflowData $workflow): string

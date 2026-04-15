@@ -10,16 +10,22 @@ use Dbp\Relay\PortfolioBundle\Handler\WorkflowTypeHandlerRegistry;
 use Dbp\Relay\PortfolioBundle\Persistence\TaskPersistence;
 use Dbp\Relay\PortfolioBundle\Persistence\WorkflowPersistence;
 use Doctrine\ORM\EntityManagerInterface;
+use Psr\Log\LoggerAwareInterface;
+use Psr\Log\LoggerAwareTrait;
+use Psr\Log\NullLogger;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Symfony\Component\Uid\Uuid;
 
-class WorkflowService
+class WorkflowService implements LoggerAwareInterface
 {
+    use LoggerAwareTrait;
+
     public function __construct(
         private readonly EntityManagerInterface $em,
         private readonly WorkflowTypeHandlerRegistry $workflowTypeHandlerRegistry,
     ) {
+        $this->logger = new NullLogger();
     }
 
     // -------------------------------------------------------------------------
@@ -60,34 +66,73 @@ class WorkflowService
     }
 
     /**
-     * Deletes a workflow and all its associated tasks by ID.
-     * Returns true if the workflow existed and was deleted, false if it was not found.
+     * Soft-deletes a workflow by setting its deletedAt timestamp.
+     *
+     * The workflow is immediately hidden from the API. The cleanup cron job will
+     * call handler->cleanup() periodically until it returns that it is done, at which point
+     * the workflow is hard-deleted from the database.
+     *
+     * Returns true if the workflow was found and soft-deleted, false if not found
+     * or already soft-deleted.
      */
-    public function deleteWorkflow(string $id): bool
+    public function softDeleteWorkflow(string $id): bool
     {
         $workflow = $this->em->getRepository(WorkflowPersistence::class)->find($id);
-        if ($workflow === null) {
+        if ($workflow === null || $workflow->isDeleted()) {
             return false;
         }
 
-        $this->em->wrapInTransaction(function () use ($workflow): void {
-            $tasks = $this->em->getRepository(TaskPersistence::class)->findBy(['workflow' => $workflow]);
-            foreach ($tasks as $task) {
-                $this->em->remove($task);
-            }
-            $this->em->remove($workflow);
-            $this->em->flush();
-        });
+        $workflow->setDeletedAt(new \DateTimeImmutable('now', new \DateTimeZone('UTC')));
+        $this->em->flush();
 
         return true;
     }
 
     /**
-     * Returns the workflow if it exists, null otherwise.
+     * Iterates all soft-deleted workflows and calls cleanup() on their handler.
+     * If cleanup() returns true, the workflow is hard-deleted from the database.
+     */
+    public function cleanupAll(): void
+    {
+        $qb = $this->em->getRepository(WorkflowPersistence::class)->createQueryBuilder('w');
+        $workflows = $qb->where($qb->expr()->isNotNull('w.deletedAt'))->getQuery()->getResult();
+
+        foreach ($workflows as $workflow) {
+            if (!$this->workflowTypeHandlerRegistry->hasHandler($workflow->getType())) {
+                $this->logger->warning('Portfolio cleanup: no handler registered for workflow type, skipping.', [
+                    'workflowId' => $workflow->getId(),
+                    'type' => $workflow->getType(),
+                ]);
+                continue;
+            }
+
+            $handler = $this->workflowTypeHandlerRegistry->getHandler($workflow->getType());
+            $result = $handler->cleanup($this->toWorkflowData($workflow));
+
+            if ($result->isDone()) {
+                $this->hardDeleteWorkflow($workflow);
+            } else {
+                $this->em->wrapInTransaction(function () use ($workflow, $result): void {
+                    $now = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+                    $workflow->setInternalState($result->getInternalState());
+                    $workflow->setUpdatedAt($now);
+                    $this->em->flush();
+                });
+            }
+        }
+    }
+
+    /**
+     * Returns the workflow if it exists and has not been soft-deleted, null otherwise.
      */
     public function getWorkflow(string $id): ?WorkflowPersistence
     {
-        return $this->em->getRepository(WorkflowPersistence::class)->find($id);
+        $workflow = $this->em->getRepository(WorkflowPersistence::class)->find($id);
+        if ($workflow === null || $workflow->isDeleted()) {
+            return null;
+        }
+
+        return $workflow;
     }
 
     /**
@@ -95,10 +140,17 @@ class WorkflowService
      */
     public function getWorkflows(int $currentPageNumber, int $maxNumItemsPerPage, ?string $type = null): array
     {
-        $criteria = $type !== null ? ['type' => $type] : [];
+        $qb = $this->em->getRepository(WorkflowPersistence::class)->createQueryBuilder('w');
+        $qb->where($qb->expr()->isNull('w.deletedAt'))
+            ->orderBy('w.createdAt', 'DESC')
+            ->setMaxResults($maxNumItemsPerPage)
+            ->setFirstResult(($currentPageNumber - 1) * $maxNumItemsPerPage);
 
-        return $this->em->getRepository(WorkflowPersistence::class)
-            ->findBy($criteria, ['createdAt' => 'DESC'], $maxNumItemsPerPage, ($currentPageNumber - 1) * $maxNumItemsPerPage);
+        if ($type !== null) {
+            $qb->andWhere('w.type = :type')->setParameter('type', $type);
+        }
+
+        return $qb->getQuery()->getResult();
     }
 
     /**
@@ -153,11 +205,21 @@ class WorkflowService
     // -------------------------------------------------------------------------
 
     /**
-     * Returns the task if it exists, null otherwise.
+     * Returns the task if it exists and its workflow has not been soft-deleted, null otherwise.
      */
     public function getTask(string $id): ?TaskPersistence
     {
-        return $this->em->getRepository(TaskPersistence::class)->find($id);
+        $task = $this->em->getRepository(TaskPersistence::class)->find($id);
+        if ($task === null) {
+            return null;
+        }
+
+        $workflow = $task->getWorkflow();
+        if ($workflow === null || $workflow->isDeleted()) {
+            return null;
+        }
+
+        return $task;
     }
 
     /**
@@ -206,14 +268,18 @@ class WorkflowService
     // -------------------------------------------------------------------------
 
     /**
-     * Calls ping() on the appropriate handler for every active workflow,
+     * Calls ping() on the appropriate handler for every active, non-deleted workflow,
      * and applies any returned state changes + task reconciliation in a transaction.
      */
     public function pingAll(): void
     {
-        $workflows = $this->em->getRepository(WorkflowPersistence::class)->findBy([
-            'state' => WorkflowPersistence::STATE_ACTIVE,
-        ]);
+        $qb = $this->em->getRepository(WorkflowPersistence::class)->createQueryBuilder('w');
+        $workflows = $qb
+            ->where('w.state = :state')
+            ->andWhere($qb->expr()->isNull('w.deletedAt'))
+            ->setParameter('state', WorkflowPersistence::STATE_ACTIVE)
+            ->getQuery()
+            ->getResult();
 
         foreach ($workflows as $workflow) {
             if (!$this->workflowTypeHandlerRegistry->hasHandler($workflow->getType())) {
@@ -265,7 +331,31 @@ class WorkflowService
             $workflow->getState(),
             $workflow->getInternalState(),
             $createdAt,
+            $workflow->getDeletedAt(),
         );
+    }
+
+    /**
+     * Removes a workflow and all its tasks from the database immediately.
+     * Must only be called after external cleanup is complete (i.e. deletedAt is set).
+     */
+    private function hardDeleteWorkflow(WorkflowPersistence $workflow): void
+    {
+        if (!$workflow->isDeleted()) {
+            throw new \LogicException(sprintf(
+                "hardDeleteWorkflow() called on workflow '%s' that has not been soft-deleted first.",
+                $workflow->getId()
+            ));
+        }
+
+        $this->em->wrapInTransaction(function () use ($workflow): void {
+            $tasks = $this->em->getRepository(TaskPersistence::class)->findBy(['workflow' => $workflow]);
+            foreach ($tasks as $task) {
+                $this->em->remove($task);
+            }
+            $this->em->remove($workflow);
+            $this->em->flush();
+        });
     }
 
     /**

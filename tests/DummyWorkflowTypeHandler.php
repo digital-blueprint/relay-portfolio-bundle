@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Dbp\Relay\PortfolioBundle\Tests;
 
 use Dbp\Relay\PortfolioBundle\Handler\Action;
+use Dbp\Relay\PortfolioBundle\Handler\CleanupResult;
 use Dbp\Relay\PortfolioBundle\Handler\StateDisplay;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowActionResult;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowData;
@@ -18,6 +19,8 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
     public const ACTION_CANCEL = 'cancel';
 
     public int $pingCallCount = 0;
+    public int $cleanupCallCount = 0;
+    public bool $cleanupDone = true;
     public bool $canUse = true;
 
     public function create(array $input): array
@@ -98,5 +101,12 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
         ++$this->pingCallCount;
 
         return null;
+    }
+
+    public function cleanup(WorkflowData $workflow): CleanupResult
+    {
+        ++$this->cleanupCallCount;
+
+        return new CleanupResult(done: $this->cleanupDone, internalState: $workflow->getInternalState());
     }
 }

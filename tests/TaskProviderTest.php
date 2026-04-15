@@ -192,6 +192,26 @@ class TaskProviderTest extends AbstractTestCase
         $this->assertSame('t-canuse', $item->getIdentifier());
     }
 
+    public function testSoftDeletedWorkflowBlocksTaskAccess(): void
+    {
+        $workflow = $this->testEntityManager->addWorkflow('wf-deleted', DummyWorkflowTypeHandler::TYPE, deletedAt: new \DateTimeImmutable());
+        $this->testEntityManager->addTask('t-deleted', $workflow);
+
+        $this->assertNull($this->tester->getItem('t-deleted'));
+    }
+
+    public function testSoftDeletedWorkflowBlocksSignedUrlTaskAccess(): void
+    {
+        $workflow = $this->testEntityManager->addWorkflow('wf-deleted-signed', DummyWorkflowTypeHandler::TYPE, deletedAt: new \DateTimeImmutable());
+        $this->testEntityManager->addTask('t-deleted-signed', $workflow);
+
+        $signedUrl = $this->handlerHelper->getSignedTaskUrl('t-deleted-signed');
+        $tester = $this->makeProviderDeniedWithRequest(Request::create($signedUrl));
+
+        // Even with a valid signed URL the task must not be accessible for a soft-deleted workflow
+        $this->assertNull($tester->getItem('t-deleted-signed'));
+    }
+
     public function testExpiredSignedUrlIsRejected(): void
     {
         $workflow = $this->testEntityManager->addWorkflow('wf-expired', DummyWorkflowTypeHandler::TYPE);

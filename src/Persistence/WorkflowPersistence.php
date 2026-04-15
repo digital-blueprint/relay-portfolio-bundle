@@ -36,6 +36,9 @@ class WorkflowPersistence
     #[ORM\Column(type: 'relay_portfolio_datetime_utc', nullable: true)]
     private ?\DateTimeImmutable $updatedAt = null;
 
+    #[ORM\Column(type: 'relay_portfolio_datetime_utc', nullable: true)]
+    private ?\DateTimeImmutable $deletedAt = null;
+
     /**
      * @var Collection<int, TaskPersistence>
      */
@@ -105,6 +108,21 @@ class WorkflowPersistence
     public function setUpdatedAt(?\DateTimeImmutable $updatedAt): void
     {
         $this->updatedAt = $updatedAt;
+    }
+
+    public function getDeletedAt(): ?\DateTimeImmutable
+    {
+        return $this->deletedAt;
+    }
+
+    public function setDeletedAt(?\DateTimeImmutable $deletedAt): void
+    {
+        $this->deletedAt = $deletedAt;
+    }
+
+    public function isDeleted(): bool
+    {
+        return $this->deletedAt !== null;
     }
 
     /**

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Dbp\Relay\PortfolioBundle\DummyWorkflow;
 
 use Dbp\Relay\PortfolioBundle\Handler\Action;
+use Dbp\Relay\PortfolioBundle\Handler\CleanupResult;
 use Dbp\Relay\PortfolioBundle\Handler\StateDisplay;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowActionResult;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowData;
@@ -140,5 +141,11 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
     public function ping(WorkflowData $workflow): ?WorkflowActionResult
     {
         return null;
+    }
+
+    public function cleanup(WorkflowData $workflow): CleanupResult
+    {
+        // No external resources to clean up.
+        return new CleanupResult(done: true, internalState: $workflow->getInternalState());
     }
 }

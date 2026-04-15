@@ -20,6 +20,7 @@ final class WorkflowData
         private readonly string $state,
         private readonly array $internalState,
         private readonly \DateTimeImmutable $createdAt,
+        private readonly ?\DateTimeImmutable $deletedAt = null,
     ) {
     }
 
@@ -49,5 +50,15 @@ final class WorkflowData
     public function getCreatedAt(): \DateTimeImmutable
     {
         return $this->createdAt;
+    }
+
+    public function getDeletedAt(): ?\DateTimeImmutable
+    {
+        return $this->deletedAt;
+    }
+
+    public function isDeleted(): bool
+    {
+        return $this->deletedAt !== null;
     }
 }

@@ -101,4 +101,18 @@ interface WorkflowTypeHandlerInterface
      * the workflow state and/or create tasks.
      */
     public function ping(WorkflowData $workflow): ?WorkflowActionResult;
+
+    /**
+     * Called periodically for soft-deleted workflows to release external resources
+     * (e.g. cancel signing sessions, revoke tokens, delete remote files).
+     *
+     * Return a CleanupResult with isDone() = true when all cleanup is complete and
+     * it is safe to hard-delete the workflow from the database. Return isDone() = false
+     * if cleanup is still in progress — the method will be called again on the next
+     * cron run. The returned internalState is always persisted, allowing multi-step
+     * cleanup progress to be tracked across cron runs.
+     *
+     * Must be safe to call repeatedly (idempotent).
+     */
+    public function cleanup(WorkflowData $workflow): CleanupResult;
 }

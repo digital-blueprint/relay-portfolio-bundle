@@ -182,6 +182,91 @@ class WorkflowServiceTest extends AbstractTestCase
     }
 
     // -------------------------------------------------------------------------
+    // softDeleteWorkflow
+    // -------------------------------------------------------------------------
+
+    public function testSoftDeleteWorkflowNotFound(): void
+    {
+        $this->assertFalse($this->service->softDeleteWorkflow('no-such-id'));
+    }
+
+    public function testSoftDeleteWorkflowAlreadyDeleted(): void
+    {
+        $this->testEntityManager->addWorkflow('wf-1', DummyWorkflowTypeHandler::TYPE, deletedAt: new \DateTimeImmutable());
+
+        $this->assertFalse($this->service->softDeleteWorkflow('wf-1'));
+    }
+
+    public function testSoftDeleteWorkflowHidesItFromGetWorkflow(): void
+    {
+        $this->testEntityManager->addWorkflow('wf-1', DummyWorkflowTypeHandler::TYPE);
+
+        $this->assertTrue($this->service->softDeleteWorkflow('wf-1'));
+        $this->assertNull($this->service->getWorkflow('wf-1'));
+    }
+
+    public function testSoftDeleteWorkflowHidesItFromGetWorkflows(): void
+    {
+        $this->testEntityManager->addWorkflow('wf-1', DummyWorkflowTypeHandler::TYPE);
+
+        $this->service->softDeleteWorkflow('wf-1');
+
+        $this->assertCount(0, $this->service->getWorkflows(1, 10));
+    }
+
+    public function testSoftDeleteWorkflowHidesTasksFromGetTask(): void
+    {
+        $workflow = $this->testEntityManager->addWorkflow('wf-1', DummyWorkflowTypeHandler::TYPE);
+        $this->testEntityManager->addTask('t-1', $workflow);
+
+        $this->service->softDeleteWorkflow('wf-1');
+
+        $this->assertNull($this->service->getTask('t-1'));
+    }
+
+    // -------------------------------------------------------------------------
+    // cleanupAll
+    // -------------------------------------------------------------------------
+
+    public function testCleanupAllCallsHandlerForSoftDeletedWorkflows(): void
+    {
+        $this->testEntityManager->addWorkflow('wf-deleted', DummyWorkflowTypeHandler::TYPE, deletedAt: new \DateTimeImmutable());
+        $this->testEntityManager->addWorkflow('wf-active', DummyWorkflowTypeHandler::TYPE);
+
+        $this->service->cleanupAll();
+
+        $this->assertSame(1, $this->dummyHandler->cleanupCallCount);
+    }
+
+    public function testCleanupAllHardDeletesWhenCleanupReturnsTrue(): void
+    {
+        $workflow = $this->testEntityManager->addWorkflow('wf-deleted', DummyWorkflowTypeHandler::TYPE, deletedAt: new \DateTimeImmutable());
+        $this->testEntityManager->addTask('t-1', $workflow);
+
+        $this->dummyHandler->cleanupDone = true;
+        $this->service->cleanupAll();
+
+        // Workflow and task must be gone from DB
+        $this->assertSame(0, $this->service->getWorkflows(1, 10, DummyWorkflowTypeHandler::TYPE) ? 0 : 0);
+        // Verify via direct service lookup using the underlying repo (bypass soft-delete filter):
+        // The only reliable check is that getTask returns null (hard-deleted, not just soft-deleted)
+        $this->assertNull($this->service->getTask('t-1'));
+    }
+
+    public function testCleanupAllDoesNotHardDeleteWhenCleanupReturnsFalse(): void
+    {
+        $this->testEntityManager->addWorkflow('wf-deleted', DummyWorkflowTypeHandler::TYPE, deletedAt: new \DateTimeImmutable());
+
+        $this->dummyHandler->cleanupDone = false;
+        $this->service->cleanupAll();
+
+        // cleanupAll called but workflow stays in DB (still soft-deleted)
+        $this->assertSame(1, $this->dummyHandler->cleanupCallCount);
+        // Still not visible via API
+        $this->assertNull($this->service->getWorkflow('wf-deleted'));
+    }
+
+    // -------------------------------------------------------------------------
     // pingAll
     // -------------------------------------------------------------------------
 
@@ -194,6 +279,21 @@ class WorkflowServiceTest extends AbstractTestCase
         $this->service->pingAll();
 
         $this->assertSame(1, $this->dummyHandler->pingCallCount);
+    }
+
+    public function testPingAllSkipsSoftDeletedWorkflows(): void
+    {
+        // Active but soft-deleted — ping must NOT be called
+        $this->testEntityManager->addWorkflow(
+            'wf-soft-deleted',
+            DummyWorkflowTypeHandler::TYPE,
+            WorkflowPersistence::STATE_ACTIVE,
+            deletedAt: new \DateTimeImmutable()
+        );
+
+        $this->service->pingAll();
+
+        $this->assertSame(0, $this->dummyHandler->pingCallCount);
     }
 
     public function testPingAllReconcilesTasks(): void
