@@ -35,9 +35,13 @@ interface WorkflowTypeHandlerInterface
     public function getDescription(WorkflowData $workflow, string $lang): string;
 
     /**
-     * Returns display information about the current state of the workflow.
+     * Returns display information about the current status of the workflow.
+     *
+     * The returned StatusDisplay carries:
+     *   - label: a short, handler-defined status label (e.g. "Waiting", "Timed out", "Cancelled")
+     *   - description: a longer description of the current status
      */
-    public function getCurrentStateDisplay(WorkflowData $workflow, string $lang): StateDisplay;
+    public function getStatusDisplay(WorkflowData $workflow, string $lang): StatusDisplay;
 
     /**
      * Returns whether the current user can use this workflow.

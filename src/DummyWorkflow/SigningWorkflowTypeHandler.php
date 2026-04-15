@@ -6,7 +6,7 @@ namespace Dbp\Relay\PortfolioBundle\DummyWorkflow;
 
 use Dbp\Relay\PortfolioBundle\Handler\Action;
 use Dbp\Relay\PortfolioBundle\Handler\CleanupResult;
-use Dbp\Relay\PortfolioBundle\Handler\StateDisplay;
+use Dbp\Relay\PortfolioBundle\Handler\StatusDisplay;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowActionResult;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowData;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowMessage;
@@ -34,7 +34,7 @@ use Symfony\Component\Uid\Uuid;
  * stable "id" of the form "{taskId}_{documentUuid}" so the external app can reference
  * individual documents unambiguously on callback.
  *
- * The "check" action inspects the signed flags and transitions to STATE_DONE when all
+ * The "check" action inspects the signed flags and transitions to closed when all
  * documents are marked signed. Flip "signed" flags directly in the DB to simulate callbacks
  * until a real trigger is implemented.
  */
@@ -90,22 +90,23 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
         return $this->translator->trans('signing_workflow.description', locale: $lang);
     }
 
-    public function getCurrentStateDisplay(WorkflowData $workflow, string $lang): StateDisplay
+    public function getStatusDisplay(WorkflowData $workflow, string $lang): StatusDisplay
     {
         $documents = $workflow->getInternalState()['documents'] ?? [];
         $total = count($documents);
         $signed = count(array_filter($documents, fn (array $doc) => $doc['signed'] ?? false));
 
-        return match ($workflow->getState()) {
-            WorkflowData::STATE_DONE => new StateDisplay(
+        if (!$workflow->isActive()) {
+            return new StatusDisplay(
                 $this->translator->trans('signing_workflow.state.completed', locale: $lang),
                 $this->translator->trans('signing_workflow.state.completed_desc', ['%total%' => $total], locale: $lang),
-            ),
-            default => new StateDisplay(
-                $this->translator->trans('signing_workflow.state.pending', locale: $lang),
-                $this->translator->trans('signing_workflow.state.pending_desc', ['%signed%' => $signed, '%total%' => $total], locale: $lang),
-            ),
-        };
+            );
+        }
+
+        return new StatusDisplay(
+            $this->translator->trans('signing_workflow.state.pending', locale: $lang),
+            $this->translator->trans('signing_workflow.state.pending_desc', ['%signed%' => $signed, '%total%' => $total], locale: $lang),
+        );
     }
 
     public function canUse(WorkflowData $workflow): bool
@@ -115,7 +116,7 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
 
     public function getAvailableActions(WorkflowData $workflow, string $lang): array
     {
-        if ($workflow->getState() !== WorkflowData::STATE_ACTIVE) {
+        if (!$workflow->isActive()) {
             return [];
         }
 
@@ -163,7 +164,7 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
         if ($signed === $total && $total > 0) {
             return new WorkflowActionResult(
                 internalState: $internalState,
-                state: WorkflowData::STATE_DONE,
+                close: true,
                 message: new WorkflowMessage(
                     type: WorkflowMessage::TYPE_SUCCESS,
                     title: $this->translator->trans('signing_workflow.message.completed_title', locale: $lang),
@@ -184,7 +185,7 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
 
     public function getExpectedTasks(WorkflowData $workflow): array
     {
-        if ($workflow->getState() === WorkflowData::STATE_ACTIVE) {
+        if ($workflow->isActive()) {
             return [$this->getTaskId($workflow)];
         }
 

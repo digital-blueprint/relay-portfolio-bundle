@@ -6,7 +6,7 @@ namespace Dbp\Relay\PortfolioBundle\DummyWorkflow;
 
 use Dbp\Relay\PortfolioBundle\Handler\Action;
 use Dbp\Relay\PortfolioBundle\Handler\CleanupResult;
-use Dbp\Relay\PortfolioBundle\Handler\StateDisplay;
+use Dbp\Relay\PortfolioBundle\Handler\StatusDisplay;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowActionResult;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowData;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowMessage;
@@ -59,20 +59,21 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
         return '';
     }
 
-    public function getCurrentStateDisplay(WorkflowData $workflow, string $lang): StateDisplay
+    public function getStatusDisplay(WorkflowData $workflow, string $lang): StatusDisplay
     {
         $counter = $workflow->getInternalState()['counter'];
 
-        return match ($workflow->getState()) {
-            WorkflowData::STATE_DONE => new StateDisplay(
+        if (!$workflow->isActive()) {
+            return new StatusDisplay(
                 $this->translator->trans('dummy_workflow.state.completed', locale: $lang),
                 $this->translator->trans('dummy_workflow.state.completed_desc', ['%count%' => $counter], locale: $lang),
-            ),
-            default => new StateDisplay(
-                $this->translator->trans('dummy_workflow.state.waiting', locale: $lang),
-                $this->translator->trans('dummy_workflow.state.waiting_desc', ['%count%' => $counter], locale: $lang),
-            ),
-        };
+            );
+        }
+
+        return new StatusDisplay(
+            $this->translator->trans('dummy_workflow.state.waiting', locale: $lang),
+            $this->translator->trans('dummy_workflow.state.waiting_desc', ['%count%' => $counter], locale: $lang),
+        );
     }
 
     public function canUse(WorkflowData $workflow): bool
@@ -82,17 +83,17 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
 
     public function getAvailableActions(WorkflowData $workflow, string $lang): array
     {
-        return match ($workflow->getState()) {
-            WorkflowData::STATE_ACTIVE => [
+        if ($workflow->isActive()) {
+            return [
                 new Action(self::ACTION_INCREMENT, $this->translator->trans('dummy_workflow.action.increment', locale: $lang)),
                 new Action(self::ACTION_COMPLETE, $this->translator->trans('dummy_workflow.action.complete', locale: $lang)),
                 new Action('view', $this->translator->trans('dummy_workflow.action.view', locale: $lang), Action::TYPE_URL, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ#'.$workflow->getId()),
-            ],
-            WorkflowData::STATE_DONE => [
-                new Action(self::ACTION_RESET, $this->translator->trans('dummy_workflow.action.reset', locale: $lang)),
-            ],
-            default => [],
-        };
+            ];
+        }
+
+        return [
+            new Action(self::ACTION_RESET, $this->translator->trans('dummy_workflow.action.reset', locale: $lang)),
+        ];
     }
 
     public function handleAction(WorkflowData $workflow, string $action, array $payload, string $lang): WorkflowActionResult
@@ -110,14 +111,14 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
 
             return new WorkflowActionResult(
                 internalState: $internalState,
-                state: WorkflowData::STATE_ACTIVE,
+                close: false,
             );
         }
 
         // complete
         return new WorkflowActionResult(
             internalState: $internalState,
-            state: WorkflowData::STATE_DONE,
+            close: true,
             message: new WorkflowMessage(
                 type: WorkflowMessage::TYPE_SUCCESS,
                 title: $this->translator->trans('dummy_workflow.message.completed_title', locale: $lang),

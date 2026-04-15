@@ -11,7 +11,6 @@ use Dbp\Relay\PortfolioBundle\ApiPlatform\WorkflowProvider;
 use Dbp\Relay\PortfolioBundle\Authorization\AuthorizationService;
 use Dbp\Relay\PortfolioBundle\Handler\Action;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowTypeHandlerRegistry;
-use Dbp\Relay\PortfolioBundle\Persistence\WorkflowPersistence;
 use Dbp\Relay\PortfolioBundle\Service\WorkflowService;
 
 class WorkflowProviderTest extends AbstractTestCase
@@ -44,10 +43,10 @@ class WorkflowProviderTest extends AbstractTestCase
         $this->assertNotNull($item);
         $this->assertSame('wf-1', $item->getIdentifier());
         $this->assertSame(DummyWorkflowTypeHandler::TYPE, $item->getType());
-        $this->assertSame(WorkflowPersistence::STATE_ACTIVE, $item->getState());
+        $this->assertTrue($item->getActive());
         $this->assertSame('Dummy Workflow', $item->getName());
         $this->assertSame('A test workflow', $item->getDescription());
-        $this->assertSame(['label' => 'Pending', 'description' => 'Waiting for input'], $item->getCurrentStateDisplay());
+        $this->assertSame(['label' => 'Pending', 'description' => 'Waiting for input'], $item->getStatusDisplay());
         $this->assertSame([
             ['id' => DummyWorkflowTypeHandler::ACTION_PROCEED, 'label' => 'Proceed', 'type' => Action::TYPE_ACTION],
             ['id' => DummyWorkflowTypeHandler::ACTION_CANCEL, 'label' => 'Cancel', 'type' => Action::TYPE_ACTION],

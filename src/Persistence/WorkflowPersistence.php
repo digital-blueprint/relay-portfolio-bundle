@@ -12,20 +12,12 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Entity]
 class WorkflowPersistence
 {
-    public const STATE_ACTIVE = 'active';
-    public const STATE_CANCELLED = 'cancelled';
-    public const STATE_DONE = 'done';
-    public const STATE_ARCHIVED = 'archived';
-
     #[ORM\Id]
     #[ORM\Column(type: 'string', length: 255)]
     private string $id = '';
 
     #[ORM\Column(type: 'string', length: 255)]
     private string $type = '';
-
-    #[ORM\Column(type: 'string', length: 50)]
-    private string $state = self::STATE_ACTIVE;
 
     #[ORM\Column(type: 'text')]
     private string $internalState = '{}';
@@ -35,6 +27,9 @@ class WorkflowPersistence
 
     #[ORM\Column(type: 'relay_portfolio_datetime_utc', nullable: true)]
     private ?\DateTimeImmutable $updatedAt = null;
+
+    #[ORM\Column(type: 'relay_portfolio_datetime_utc', nullable: true)]
+    private ?\DateTimeImmutable $closedAt = null;
 
     #[ORM\Column(type: 'relay_portfolio_datetime_utc', nullable: true)]
     private ?\DateTimeImmutable $deletedAt = null;
@@ -70,16 +65,6 @@ class WorkflowPersistence
         $this->type = $type;
     }
 
-    public function getState(): string
-    {
-        return $this->state;
-    }
-
-    public function setState(string $state): void
-    {
-        $this->state = $state;
-    }
-
     public function getInternalState(): array
     {
         return json_decode($this->internalState, true, flags: JSON_THROW_ON_ERROR);
@@ -108,6 +93,31 @@ class WorkflowPersistence
     public function setUpdatedAt(?\DateTimeImmutable $updatedAt): void
     {
         $this->updatedAt = $updatedAt;
+    }
+
+    public function getClosedAt(): ?\DateTimeImmutable
+    {
+        return $this->closedAt;
+    }
+
+    public function setClosedAt(?\DateTimeImmutable $closedAt): void
+    {
+        $this->closedAt = $closedAt;
+    }
+
+    public function isActive(): bool
+    {
+        return $this->closedAt === null;
+    }
+
+    public function close(): void
+    {
+        $this->closedAt = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+    }
+
+    public function reopen(): void
+    {
+        $this->closedAt = null;
     }
 
     public function getDeletedAt(): ?\DateTimeImmutable

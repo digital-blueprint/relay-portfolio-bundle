@@ -51,7 +51,7 @@ class WorkflowItem
     private ?string $type = null;
 
     #[Groups(['PortfolioWorkflow:output'])]
-    private ?string $state = null;
+    private ?bool $active = null;
 
     #[Groups(['PortfolioWorkflow:output'])]
     private ?string $name = null;
@@ -61,7 +61,7 @@ class WorkflowItem
 
     /** @var array<string, string>|null */
     #[Groups(['PortfolioWorkflow:output'])]
-    private ?array $currentStateDisplay = null;
+    private ?array $statusDisplay = null;
 
     /** @var array<array{id: string, label: string, type: string, url?: string}>|null */
     #[Groups(['PortfolioWorkflow:output'])]
@@ -95,14 +95,14 @@ class WorkflowItem
         $this->type = $type;
     }
 
-    public function getState(): ?string
+    public function getActive(): ?bool
     {
-        return $this->state;
+        return $this->active;
     }
 
-    public function setState(?string $state): void
+    public function setActive(?bool $active): void
     {
-        $this->state = $state;
+        $this->active = $active;
     }
 
     public function getName(): ?string
@@ -128,17 +128,17 @@ class WorkflowItem
     /**
      * @return array<string, string>|null
      */
-    public function getCurrentStateDisplay(): ?array
+    public function getStatusDisplay(): ?array
     {
-        return $this->currentStateDisplay;
+        return $this->statusDisplay;
     }
 
     /**
-     * @param array<string, string>|null $currentStateDisplay
+     * @param array<string, string>|null $statusDisplay
      */
-    public function setCurrentStateDisplay(?array $currentStateDisplay): void
+    public function setStatusDisplay(?array $statusDisplay): void
     {
-        $this->currentStateDisplay = $currentStateDisplay;
+        $this->statusDisplay = $statusDisplay;
     }
 
     /**

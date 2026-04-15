@@ -51,7 +51,6 @@ class WorkflowService implements LoggerAwareInterface
         $workflow = new WorkflowPersistence();
         $workflow->setId(Uuid::v4()->toRfc4122());
         $workflow->setType($type);
-        $workflow->setState(WorkflowPersistence::STATE_ACTIVE);
         $workflow->setInternalState($internalState);
         $workflow->setCreatedAt($now);
         $workflow->setUpdatedAt($now);
@@ -188,9 +187,7 @@ class WorkflowService implements LoggerAwareInterface
             $now = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
 
             $workflow->setInternalState($result->getInternalState());
-            if ($result->getState() !== null) {
-                $workflow->setState($result->getState());
-            }
+            $this->applyClose($workflow, $result);
             $workflow->setUpdatedAt($now);
             $this->em->flush();
 
@@ -268,16 +265,15 @@ class WorkflowService implements LoggerAwareInterface
     // -------------------------------------------------------------------------
 
     /**
-     * Calls ping() on the appropriate handler for every active, non-deleted workflow,
+     * Calls ping() on the appropriate handler for every active (non-closed), non-deleted workflow,
      * and applies any returned state changes + task reconciliation in a transaction.
      */
     public function pingAll(): void
     {
         $qb = $this->em->getRepository(WorkflowPersistence::class)->createQueryBuilder('w');
         $workflows = $qb
-            ->where('w.state = :state')
+            ->where($qb->expr()->isNull('w.closedAt'))
             ->andWhere($qb->expr()->isNull('w.deletedAt'))
-            ->setParameter('state', WorkflowPersistence::STATE_ACTIVE)
             ->getQuery()
             ->getResult();
 
@@ -292,9 +288,7 @@ class WorkflowService implements LoggerAwareInterface
                 if ($result !== null) {
                     $now = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
                     $workflow->setInternalState($result->getInternalState());
-                    if ($result->getState() !== null) {
-                        $workflow->setState($result->getState());
-                    }
+                    $this->applyClose($workflow, $result);
                     $workflow->setUpdatedAt($now);
                     $this->em->flush();
                 }
@@ -328,11 +322,26 @@ class WorkflowService implements LoggerAwareInterface
         return new WorkflowData(
             $workflow->getId(),
             $workflow->getType(),
-            $workflow->getState(),
+            $workflow->isActive(),
             $workflow->getInternalState(),
             $createdAt,
             $workflow->getDeletedAt(),
         );
+    }
+
+    /**
+     * Applies the close/reopen instruction from a WorkflowActionResult to the workflow entity.
+     *   null  = no change
+     *   true  = close (set closedAt = now)
+     *   false = reopen (set closedAt = null).
+     */
+    private function applyClose(WorkflowPersistence $workflow, WorkflowActionResult $result): void
+    {
+        if ($result->getClose() === true) {
+            $workflow->close();
+        } elseif ($result->getClose() === false) {
+            $workflow->reopen();
+        }
     }
 
     /**

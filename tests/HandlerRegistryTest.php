@@ -4,11 +4,10 @@ declare(strict_types=1);
 
 namespace Dbp\Relay\PortfolioBundle\Tests;
 
-use Dbp\Relay\PortfolioBundle\Handler\StateDisplay;
+use Dbp\Relay\PortfolioBundle\Handler\StatusDisplay;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowActionResult;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowMessage;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowTypeHandlerRegistry;
-use Dbp\Relay\PortfolioBundle\Persistence\WorkflowPersistence;
 use PHPUnit\Framework\TestCase;
 
 class HandlerRegistryTest extends TestCase
@@ -66,7 +65,7 @@ class HandlerRegistryTest extends TestCase
 
     public function testStateDisplay(): void
     {
-        $sd = new StateDisplay('My Label', 'My Description');
+        $sd = new StatusDisplay('My Label', 'My Description');
         $this->assertSame('My Label', $sd->getLabel());
         $this->assertSame('My Description', $sd->getDescription());
     }
@@ -81,12 +80,12 @@ class HandlerRegistryTest extends TestCase
 
         $result = new WorkflowActionResult(
             internalState: ['key' => 'val'],
-            state: WorkflowPersistence::STATE_DONE,
+            close: true,
             message: $message,
         );
 
         $this->assertSame(['key' => 'val'], $result->getInternalState());
-        $this->assertSame(WorkflowPersistence::STATE_DONE, $result->getState());
+        $this->assertTrue($result->getClose());
         $this->assertSame($message, $result->getMessage());
         $this->assertNull($result->getUrl());
     }
@@ -106,7 +105,7 @@ class HandlerRegistryTest extends TestCase
     {
         $result = new WorkflowActionResult(internalState: []);
 
-        $this->assertNull($result->getState());
+        $this->assertNull($result->getClose());
         $this->assertNull($result->getMessage());
         $this->assertNull($result->getUrl());
     }

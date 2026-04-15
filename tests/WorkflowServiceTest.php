@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Dbp\Relay\PortfolioBundle\Tests;
 
-use Dbp\Relay\PortfolioBundle\Persistence\WorkflowPersistence;
 use Dbp\Relay\PortfolioBundle\Service\WorkflowService;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
@@ -32,7 +31,7 @@ class WorkflowServiceTest extends AbstractTestCase
 
         $this->assertNotEmpty($workflow->getId());
         $this->assertSame(DummyWorkflowTypeHandler::TYPE, $workflow->getType());
-        $this->assertSame(WorkflowPersistence::STATE_ACTIVE, $workflow->getState());
+        $this->assertTrue($workflow->isActive());
         $this->assertSame(['key' => 'val'], $workflow->getInternalState());
     }
 
@@ -99,17 +98,19 @@ class WorkflowServiceTest extends AbstractTestCase
         $this->service->handleAction('wf-1', 'unknown-action', [], 'en');
     }
 
-    public function testHandleActionUpdatesWorkflowState(): void
+    public function testHandleActionClosesWorkflow(): void
     {
         $this->testEntityManager->addWorkflow('wf-1', DummyWorkflowTypeHandler::TYPE);
 
         $result = $this->service->handleAction('wf-1', DummyWorkflowTypeHandler::ACTION_PROCEED, [], 'en');
 
-        $this->assertSame(WorkflowPersistence::STATE_DONE, $result->getState());
+        $this->assertTrue($result->getClose());
         $this->assertSame(['step' => 'done'], $result->getInternalState());
 
+        // Workflow is now closed (not active)
         $workflow = $this->service->getWorkflow('wf-1');
-        $this->assertSame(WorkflowPersistence::STATE_DONE, $workflow->getState());
+        $this->assertNotNull($workflow);
+        $this->assertFalse($workflow->isActive());
         $this->assertSame(['step' => 'done'], $workflow->getInternalState());
     }
 
@@ -119,22 +120,23 @@ class WorkflowServiceTest extends AbstractTestCase
         $workflow = $this->testEntityManager->addWorkflow('wf-1', DummyWorkflowTypeHandler::TYPE);
         $this->testEntityManager->addTask('task-wf-1', $workflow);
 
-        // Proceed → done: handler returns no tasks for done state, so existing task is deleted
+        // Proceed → closed: handler returns no tasks for inactive state, so existing task is deleted
         $this->service->handleAction('wf-1', DummyWorkflowTypeHandler::ACTION_PROCEED, [], 'en');
 
         $tasks = $this->service->getTasksForWorkflow('wf-1', 1, 10);
         $this->assertCount(0, $tasks);
     }
 
-    public function testHandleActionCancel(): void
+    public function testHandleActionCancelClosesWorkflow(): void
     {
         $this->testEntityManager->addWorkflow('wf-1', DummyWorkflowTypeHandler::TYPE);
 
         $result = $this->service->handleAction('wf-1', DummyWorkflowTypeHandler::ACTION_CANCEL, [], 'en');
-        $this->assertSame(WorkflowPersistence::STATE_CANCELLED, $result->getState());
+        $this->assertTrue($result->getClose());
 
         $workflow = $this->service->getWorkflow('wf-1');
-        $this->assertSame(WorkflowPersistence::STATE_CANCELLED, $workflow->getState());
+        $this->assertNotNull($workflow);
+        $this->assertFalse($workflow->isActive());
     }
 
     // -------------------------------------------------------------------------
@@ -272,9 +274,8 @@ class WorkflowServiceTest extends AbstractTestCase
 
     public function testPingAllCallsHandlerForActiveWorkflows(): void
     {
-        $this->testEntityManager->addWorkflow('wf-active', DummyWorkflowTypeHandler::TYPE, WorkflowPersistence::STATE_ACTIVE);
-        $this->testEntityManager->addWorkflow('wf-done', DummyWorkflowTypeHandler::TYPE, WorkflowPersistence::STATE_DONE);
-        $this->testEntityManager->addWorkflow('wf-cancelled', DummyWorkflowTypeHandler::TYPE, WorkflowPersistence::STATE_CANCELLED);
+        $this->testEntityManager->addWorkflow('wf-active', DummyWorkflowTypeHandler::TYPE, active: true);
+        $this->testEntityManager->addWorkflow('wf-closed', DummyWorkflowTypeHandler::TYPE, active: false);
 
         $this->service->pingAll();
 
@@ -287,7 +288,7 @@ class WorkflowServiceTest extends AbstractTestCase
         $this->testEntityManager->addWorkflow(
             'wf-soft-deleted',
             DummyWorkflowTypeHandler::TYPE,
-            WorkflowPersistence::STATE_ACTIVE,
+            active: true,
             deletedAt: new \DateTimeImmutable()
         );
 

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Dbp\Relay\PortfolioBundle\Handler;
 
-class StateDisplay
+class StatusDisplay
 {
     public function __construct(
         private readonly string $label,

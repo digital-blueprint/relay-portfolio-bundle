@@ -101,7 +101,7 @@ class WorkflowActionProcessorTest extends AbstractTestCase
         $this->assertSame('The workflow has been completed successfully.', $msg->getText());
     }
 
-    public function testAddItemUpdatesWorkflowState(): void
+    public function testAddItemClosesWorkflow(): void
     {
         $this->testEntityManager->addWorkflow('wf-1', DummyWorkflowTypeHandler::TYPE);
         $this->tester->addItem($this->makeAction('wf-1', DummyWorkflowTypeHandler::ACTION_PROCEED));
@@ -109,6 +109,7 @@ class WorkflowActionProcessorTest extends AbstractTestCase
         $em = $this->testEntityManager->getEntityManager();
         $em->clear();
         $workflow = $em->find(WorkflowPersistence::class, 'wf-1');
-        $this->assertSame(WorkflowPersistence::STATE_DONE, $workflow->getState());
+        $this->assertFalse($workflow->isActive());
+        $this->assertNotNull($workflow->getClosedAt());
     }
 }

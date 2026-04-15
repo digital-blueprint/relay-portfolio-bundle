@@ -82,7 +82,7 @@ class WorkflowProvider extends AbstractDataProvider
         $item = new WorkflowItem();
         $item->setIdentifier($workflow->getId());
         $item->setType($workflow->getType());
-        $item->setState($workflow->getState());
+        $item->setActive($workflow->isActive());
         $item->setCreatedAt($workflow->getCreatedAt());
         $item->setUpdatedAt($workflow->getUpdatedAt());
 
@@ -94,10 +94,10 @@ class WorkflowProvider extends AbstractDataProvider
             $item->setName($handler->getName($workflowData, $lang));
             $item->setDescription($handler->getDescription($workflowData, $lang));
 
-            $stateDisplay = $handler->getCurrentStateDisplay($workflowData, $lang);
-            $item->setCurrentStateDisplay([
-                'label' => $stateDisplay->getLabel(),
-                'description' => $stateDisplay->getDescription(),
+            $statusDisplay = $handler->getStatusDisplay($workflowData, $lang);
+            $item->setStatusDisplay([
+                'label' => $statusDisplay->getLabel(),
+                'description' => $statusDisplay->getDescription(),
             ]);
 
             $item->setAvailableActions(array_map(
@@ -126,7 +126,7 @@ class WorkflowProvider extends AbstractDataProvider
         return new WorkflowData(
             $workflow->getId(),
             $workflow->getType(),
-            $workflow->getState(),
+            $workflow->isActive(),
             $workflow->getInternalState(),
             $createdAt,
             $workflow->getDeletedAt(),

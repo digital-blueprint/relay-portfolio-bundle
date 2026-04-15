@@ -41,7 +41,7 @@ class SigningWorkflowTest extends AbstractTestCase
         return new WorkflowData(
             $workflow->getId(),
             $workflow->getType(),
-            $workflow->getState(),
+            $workflow->isActive(),
             $workflow->getInternalState(),
             $workflow->getCreatedAt() ?? new \DateTimeImmutable(),
         );
@@ -129,7 +129,7 @@ class SigningWorkflowTest extends AbstractTestCase
             ['documents' => $this->twoDocumentInput],
         );
 
-        $this->assertSame(WorkflowPersistence::STATE_ACTIVE, $workflow->getState());
+        $this->assertTrue($workflow->isActive());
         $this->assertSame(SigningWorkflowTypeHandler::TYPE, $workflow->getType());
     }
 
@@ -212,8 +212,8 @@ class SigningWorkflowTest extends AbstractTestCase
         $workflow = $this->testEntityManager->addWorkflow(
             'wf-partial',
             SigningWorkflowTypeHandler::TYPE,
-            WorkflowPersistence::STATE_ACTIVE,
-            $this->buildInternalState('task-uuid-partial', [
+            active: true,
+            internalState: $this->buildInternalState('task-uuid-partial', [
                 ['id' => 'doc-uuid-1', 'url' => 'https://example.com/doc1.pdf', 'x' => 100, 'y' => 200, 'page' => 1, 'signed' => true, 'profile' => 'official'],
                 ['id' => 'doc-uuid-2', 'url' => 'https://example.com/doc2.pdf', 'x' => 50, 'y' => 300, 'page' => 2, 'signed' => false, 'profile' => 'official'],
             ]),
@@ -284,13 +284,13 @@ class SigningWorkflowTest extends AbstractTestCase
         $this->assertContains(SigningWorkflowTypeHandler::ACTION_CHECK, $ids);
     }
 
-    public function testNoActionsWhenDone(): void
+    public function testNoActionsWhenClosed(): void
     {
         $workflow = $this->testEntityManager->addWorkflow(
-            'wf-done',
+            'wf-closed',
             SigningWorkflowTypeHandler::TYPE,
-            WorkflowPersistence::STATE_DONE,
-            $this->buildInternalState('task-uuid-done', [
+            active: false,
+            internalState: $this->buildInternalState('task-uuid-done', [
                 ['id' => 'doc-uuid-1', 'url' => 'https://example.com/doc1.pdf', 'x' => 100, 'y' => 200, 'page' => 1, 'signed' => true],
             ]),
         );
@@ -316,24 +316,24 @@ class SigningWorkflowTest extends AbstractTestCase
             'en',
         );
 
-        // null state = no transition; workflow stays active
-        $this->assertNull($result->getState());
+        // null close = no transition; workflow stays active
+        $this->assertNull($result->getClose());
         $this->assertNotNull($result->getMessage());
         $this->assertStringContainsString('0 / 2', $result->getMessage()->getText());
     }
 
     // -------------------------------------------------------------------------
-    // Check action — all signed → transitions to DONE
+    // Check action — all signed → closes workflow
     // -------------------------------------------------------------------------
 
-    public function testCheckWhenAllSignedTransitionsToDone(): void
+    public function testCheckWhenAllSignedClosesWorkflow(): void
     {
         // Use addWorkflow() to inject a state where both docs are already signed
         $workflow = $this->testEntityManager->addWorkflow(
             'wf-signing',
             SigningWorkflowTypeHandler::TYPE,
-            WorkflowPersistence::STATE_ACTIVE,
-            $this->buildInternalState('task-uuid-1', [
+            active: true,
+            internalState: $this->buildInternalState('task-uuid-1', [
                 ['id' => 'doc-uuid-1', 'url' => 'https://example.com/doc1.pdf', 'x' => 100, 'y' => 200, 'page' => 1, 'signed' => true],
                 ['id' => 'doc-uuid-2', 'url' => 'https://example.com/doc2.pdf', 'x' => 50, 'y' => 300, 'page' => 2, 'signed' => true],
             ]),
@@ -348,21 +348,22 @@ class SigningWorkflowTest extends AbstractTestCase
             'en',
         );
 
-        $this->assertSame(WorkflowPersistence::STATE_DONE, $result->getState());
+        $this->assertTrue($result->getClose());
         $this->assertNotNull($result->getMessage());
 
         $persisted = $this->service->getWorkflow($workflow->getId());
         $this->assertNotNull($persisted);
-        $this->assertSame(WorkflowPersistence::STATE_DONE, $persisted->getState());
+        $this->assertFalse($persisted->isActive());
+        $this->assertNotNull($persisted->getClosedAt());
     }
 
-    public function testTaskDeletedAfterTransitionToDone(): void
+    public function testTaskDeletedAfterClose(): void
     {
         $workflow = $this->testEntityManager->addWorkflow(
             'wf-signing-2',
             SigningWorkflowTypeHandler::TYPE,
-            WorkflowPersistence::STATE_ACTIVE,
-            $this->buildInternalState('task-uuid-2', [
+            active: true,
+            internalState: $this->buildInternalState('task-uuid-2', [
                 ['id' => 'doc-uuid-1', 'url' => 'https://example.com/doc1.pdf', 'x' => 100, 'y' => 200, 'page' => 1, 'signed' => true],
             ]),
         );
@@ -378,41 +379,41 @@ class SigningWorkflowTest extends AbstractTestCase
             'en',
         );
 
-        // getExpectedTasks() returns [] for done state → task removed by reconciliation
+        // getExpectedTasks() returns [] for closed state → task removed by reconciliation
         $tasksAfter = $this->service->getTasksForWorkflow($workflow->getId(), 1, 10);
         $this->assertCount(0, $tasksAfter);
     }
 
     // -------------------------------------------------------------------------
-    // State display
+    // Status display
     // -------------------------------------------------------------------------
 
-    public function testStateDisplayWhileActive(): void
+    public function testStatusDisplayWhileActive(): void
     {
         $workflow = $this->service->createWorkflow(
             SigningWorkflowTypeHandler::TYPE,
             ['documents' => $this->twoDocumentInput],
         );
 
-        $display = $this->handler->getCurrentStateDisplay($this->toWorkflowData($workflow), 'en');
+        $display = $this->handler->getStatusDisplay($this->toWorkflowData($workflow), 'en');
 
         $this->assertSame('Pending', $display->getLabel());
         $this->assertStringContainsString('0 / 2', $display->getDescription());
     }
 
-    public function testStateDisplayWhenDone(): void
+    public function testStatusDisplayWhenClosed(): void
     {
         $workflow = $this->testEntityManager->addWorkflow(
-            'wf-done-display',
+            'wf-closed-display',
             SigningWorkflowTypeHandler::TYPE,
-            WorkflowPersistence::STATE_DONE,
-            $this->buildInternalState('task-uuid-done-display', [
+            active: false,
+            internalState: $this->buildInternalState('task-uuid-closed-display', [
                 ['id' => 'doc-uuid-1', 'url' => 'https://example.com/doc1.pdf', 'x' => 100, 'y' => 200, 'page' => 1, 'signed' => true],
                 ['id' => 'doc-uuid-2', 'url' => 'https://example.com/doc2.pdf', 'x' => 50, 'y' => 300, 'page' => 2, 'signed' => true],
             ]),
         );
 
-        $display = $this->handler->getCurrentStateDisplay($this->toWorkflowData($workflow), 'en');
+        $display = $this->handler->getStatusDisplay($this->toWorkflowData($workflow), 'en');
 
         $this->assertSame('Completed', $display->getLabel());
         $this->assertStringContainsString('2', $display->getDescription());

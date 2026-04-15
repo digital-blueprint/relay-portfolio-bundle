@@ -6,7 +6,7 @@ namespace Dbp\Relay\PortfolioBundle\Tests;
 
 use Dbp\Relay\PortfolioBundle\Handler\Action;
 use Dbp\Relay\PortfolioBundle\Handler\CleanupResult;
-use Dbp\Relay\PortfolioBundle\Handler\StateDisplay;
+use Dbp\Relay\PortfolioBundle\Handler\StatusDisplay;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowActionResult;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowData;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowMessage;
@@ -45,9 +45,9 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
         return 'A test workflow';
     }
 
-    public function getCurrentStateDisplay(WorkflowData $workflow, string $lang): StateDisplay
+    public function getStatusDisplay(WorkflowData $workflow, string $lang): StatusDisplay
     {
-        return new StateDisplay('Pending', 'Waiting for input');
+        return new StatusDisplay('Pending', 'Waiting for input');
     }
 
     public function canUse(WorkflowData $workflow): bool
@@ -72,7 +72,7 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
         if ($action === self::ACTION_PROCEED) {
             return new WorkflowActionResult(
                 internalState: ['step' => 'done'],
-                state: WorkflowData::STATE_DONE,
+                close: true,
                 message: new WorkflowMessage(
                     type: WorkflowMessage::TYPE_INFO,
                     title: 'Step completed',
@@ -83,14 +83,14 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
 
         return new WorkflowActionResult(
             internalState: [],
-            state: WorkflowData::STATE_CANCELLED,
+            close: true,
         );
     }
 
     public function getExpectedTasks(WorkflowData $workflow): array
     {
         // Return one task while active, none otherwise
-        if ($workflow->getState() === WorkflowData::STATE_ACTIVE) {
+        if ($workflow->isActive()) {
             return ['task-'.$workflow->getId()];
         }
 
