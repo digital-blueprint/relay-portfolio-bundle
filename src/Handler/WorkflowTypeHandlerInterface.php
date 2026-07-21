@@ -97,6 +97,19 @@ interface WorkflowTypeHandlerInterface
     public function getTaskResponse(WorkflowData $workflow, string $taskId, string $lang): array;
 
     /**
+     * Computes and returns renderable content (e.g. HTML) served at the internal
+     * /portfolio/_render endpoint, typically embedded in an iframe on the client.
+     *
+     * The content is derived on-the-fly from the workflow's internal state. The
+     * $renderId is handler-defined and is chosen by the handler when it builds the
+     * signed render URL (see WorkflowTypeHandlerHelper::getSignedRenderUrl()), so
+     * the handler can route the request back to the right piece of content.
+     *
+     * Should throw if the $renderId is unknown or does not belong to this workflow.
+     */
+    public function getRenderResponse(WorkflowData $workflow, string $renderId, string $lang): RenderResult;
+
+    /**
      * Periodic check called by the cron job, e.g. for sending reminder emails or
      * advancing workflow state automatically (e.g. timeouts, external status checks).
      *

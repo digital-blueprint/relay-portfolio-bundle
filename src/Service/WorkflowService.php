@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Dbp\Relay\PortfolioBundle\Service;
 
+use Dbp\Relay\PortfolioBundle\Handler\RenderResult;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowActionResult;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowData;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowTypeHandlerRegistry;
@@ -258,6 +259,17 @@ class WorkflowService implements LoggerAwareInterface
         $handler = $this->workflowTypeHandlerRegistry->getHandler($workflow->getType());
 
         return $handler->getTaskResponse($this->toWorkflowData($workflow), $task->getId(), $lang);
+    }
+
+    /**
+     * Returns the renderable content (e.g. HTML) for a workflow, keyed by a
+     * handler-defined render ID.
+     */
+    public function getRenderResponse(WorkflowPersistence $workflow, string $renderId, string $lang): RenderResult
+    {
+        $handler = $this->workflowTypeHandlerRegistry->getHandler($workflow->getType());
+
+        return $handler->getRenderResponse($this->toWorkflowData($workflow), $renderId, $lang);
     }
 
     // -------------------------------------------------------------------------

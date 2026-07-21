@@ -6,6 +6,7 @@ namespace Dbp\Relay\PortfolioBundle\Tests;
 
 use Dbp\Relay\PortfolioBundle\Handler\Action;
 use Dbp\Relay\PortfolioBundle\Handler\CleanupResult;
+use Dbp\Relay\PortfolioBundle\Handler\RenderResult;
 use Dbp\Relay\PortfolioBundle\Handler\StatusDisplay;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowActionResult;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowData;
@@ -100,6 +101,15 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
     public function getTaskResponse(WorkflowData $workflow, string $taskId, string $lang): array
     {
         return ['info' => 'computed from '.$workflow->getId()];
+    }
+
+    public function getRenderResponse(WorkflowData $workflow, string $renderId, string $lang): RenderResult
+    {
+        if ($renderId === 'unknown') {
+            throw new \RuntimeException(sprintf("Unknown renderId '%s'.", $renderId));
+        }
+
+        return new RenderResult('<html><body>render '.$renderId.' for '.$workflow->getId().'</body></html>');
     }
 
     public function ping(WorkflowData $workflow): ?WorkflowActionResult

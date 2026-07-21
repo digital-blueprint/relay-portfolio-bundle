@@ -6,14 +6,18 @@ namespace Dbp\Relay\PortfolioBundle\DummyWorkflow;
 
 use Dbp\Relay\PortfolioBundle\Handler\Action;
 use Dbp\Relay\PortfolioBundle\Handler\CleanupResult;
+use Dbp\Relay\PortfolioBundle\Handler\RenderResult;
 use Dbp\Relay\PortfolioBundle\Handler\StatusDisplay;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowActionResult;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowData;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowMessage;
+use Dbp\Relay\PortfolioBundle\Handler\WorkflowTypeHandlerHelper;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowTypeHandlerInterface;
 use Symfony\Component\Translation\Loader\YamlFileLoader;
 use Symfony\Component\Translation\Translator;
 use Symfony\Component\Uid\Uuid;
+use Twig\Environment;
+use Twig\Loader\FilesystemLoader;
 
 class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
 {
@@ -21,16 +25,22 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
     public const ACTION_COMPLETE = 'complete';
     public const ACTION_INCREMENT = 'increment';
     public const ACTION_RESET = 'reset';
+    public const ACTION_SHOW_RENDER = 'show-render';
+    public const RENDER_HELLO = 'hello';
 
     private readonly Translator $translator;
+    private readonly Environment $twig;
 
-    public function __construct()
-    {
+    public function __construct(
+        private readonly WorkflowTypeHandlerHelper $helper,
+    ) {
         $translator = new Translator('en');
         $translator->addLoader('yaml', new YamlFileLoader());
         $translator->addResource('yaml', __DIR__.'/translations/messages.en.yaml', 'en');
         $translator->addResource('yaml', __DIR__.'/translations/messages.de.yaml', 'de');
         $this->translator = $translator;
+
+        $this->twig = new Environment(new FilesystemLoader(__DIR__.'/templates'));
     }
 
     public function create(array $input): array
@@ -88,6 +98,7 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
                 new Action(self::ACTION_INCREMENT, $this->translator->trans('dummy_workflow.action.increment', locale: $lang)),
                 new Action(self::ACTION_COMPLETE, $this->translator->trans('dummy_workflow.action.complete', locale: $lang)),
                 new Action('view', $this->translator->trans('dummy_workflow.action.view', locale: $lang), Action::TYPE_URL, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ#'.$workflow->getId()),
+                new Action(self::ACTION_SHOW_RENDER, $this->translator->trans('dummy_workflow.action.show_render', locale: $lang)),
             ];
         }
 
@@ -99,6 +110,13 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
     public function handleAction(WorkflowData $workflow, string $action, array $payload, string $lang): WorkflowActionResult
     {
         $internalState = $workflow->getInternalState();
+
+        if ($action === self::ACTION_SHOW_RENDER) {
+            return new WorkflowActionResult(
+                internalState: $internalState,
+                url: $this->helper->getSignedRenderUrl($workflow->getId(), self::RENDER_HELLO),
+            );
+        }
 
         if ($action === self::ACTION_INCREMENT) {
             $internalState['counter'] += $internalState['increment'];
@@ -137,6 +155,23 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
     public function getTaskResponse(WorkflowData $workflow, string $taskId, string $lang): array
     {
         return [];
+    }
+
+    public function getRenderResponse(WorkflowData $workflow, string $renderId, string $lang): RenderResult
+    {
+        if ($renderId !== self::RENDER_HELLO) {
+            throw new \RuntimeException(sprintf("Unknown renderId '%s' for workflow '%s'.", $renderId, $workflow->getId()));
+        }
+
+        $html = $this->twig->render('hello.html.twig', [
+            'lang' => $lang,
+            'title' => $this->getName($workflow, $lang),
+            'workflowId' => $workflow->getId(),
+            'renderId' => $renderId,
+            'counter' => $workflow->getInternalState()['counter'] ?? 0,
+        ]);
+
+        return new RenderResult($html);
     }
 
     public function ping(WorkflowData $workflow): ?WorkflowActionResult
