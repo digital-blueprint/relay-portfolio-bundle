@@ -21,6 +21,8 @@ class DbpRelayPortfolioExtension extends ConfigurableExtension implements Prepen
     {
         $this->addResourceClassDirectory($container, __DIR__.'/../ApiPlatform');
 
+        $this->addRouteResource($container, __DIR__.'/../Resources/config/routes.yaml', 'yaml');
+
         $loader = new PhpFileLoader(
             $container,
             new FileLocator(__DIR__.'/../Resources/config')

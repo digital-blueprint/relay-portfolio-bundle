@@ -30,6 +30,10 @@ return static function (ContainerConfigurator $configurator): void {
         ->autowire()
         ->autoconfigure();
 
+    $services->load('Dbp\\Relay\\PortfolioBundle\\Render\\', '../../Render')
+        ->autowire()
+        ->autoconfigure();
+
     $services->load('Dbp\\Relay\\PortfolioBundle\\DummyWorkflow\\', '../../DummyWorkflow')
         ->autowire()
         ->autoconfigure();

@@ -20,7 +20,16 @@ class WorkflowTypeHandlerHelperTest extends TestCase
 
         $urlGenerator = $this->createMock(UrlGeneratorInterface::class);
         $urlGenerator->method('generate')->willReturnCallback(
-            fn (string $route, array $params) => 'https://example.com/portfolio/tasks/'.$params['identifier']
+            function (string $route, array $params) {
+                if ($route === 'dbp_relay_portfolio_render') {
+                    return 'https://example.com/portfolio/_render?'.http_build_query([
+                        'workflowId' => $params['workflowId'],
+                        'renderId' => $params['renderId'],
+                    ]);
+                }
+
+                return 'https://example.com/portfolio/tasks/'.$params['identifier'];
+            }
         );
 
         $this->helper = new WorkflowTypeHandlerHelper($urlGenerator, $this->uriSigner);
@@ -92,6 +101,56 @@ class WorkflowTypeHandlerHelperTest extends TestCase
 
         // Replace the task ID in the path — signature should no longer match
         $tampered = str_replace('/tasks/my-task', '/tasks/other-task', $signed);
+        $this->assertFalse($this->uriSigner->check($tampered));
+    }
+
+    // -------------------------------------------------------------------------
+    // Signed render URLs
+    // -------------------------------------------------------------------------
+
+    public function testGetSignedRenderUrlIsVerifiableByUriSigner(): void
+    {
+        $signed = $this->helper->getSignedRenderUrl('wf-1', 'hello');
+
+        $this->assertTrue($this->uriSigner->check($signed));
+    }
+
+    public function testGetSignedRenderUrlContainsWorkflowAndRenderId(): void
+    {
+        $signed = $this->helper->getSignedRenderUrl('wf-1', 'hello');
+
+        parse_str((string) parse_url($signed, PHP_URL_QUERY), $params);
+        $this->assertSame('wf-1', $params['workflowId']);
+        $this->assertSame('hello', $params['renderId']);
+    }
+
+    public function testGetSignedRenderUrlContainsExpiration(): void
+    {
+        $before = time();
+        $signed = $this->helper->getSignedRenderUrl('wf-1', 'hello', 3600);
+        $after = time();
+
+        parse_str((string) parse_url($signed, PHP_URL_QUERY), $params);
+        $expiration = (int) $params['_expiration'];
+
+        $this->assertGreaterThanOrEqual($before + 3600, $expiration);
+        $this->assertLessThanOrEqual($after + 3600, $expiration);
+    }
+
+    public function testSignedRenderUrlWithWrongSecretFailsCheck(): void
+    {
+        $signed = $this->helper->getSignedRenderUrl('wf-1', 'hello');
+
+        $wrongSigner = new UriSigner('wrong-secret');
+        $this->assertFalse($wrongSigner->check($signed));
+    }
+
+    public function testTamperedRenderWorkflowIdFailsCheck(): void
+    {
+        $signed = $this->helper->getSignedRenderUrl('wf-1', 'hello');
+
+        // Tamper with the workflowId query param — signature should no longer match
+        $tampered = str_replace('workflowId=wf-1', 'workflowId=wf-2', $signed);
         $this->assertFalse($this->uriSigner->check($tampered));
     }
 }

@@ -6,6 +6,7 @@ namespace Dbp\Relay\PortfolioBundle\DummyWorkflow;
 
 use Dbp\Relay\PortfolioBundle\Handler\Action;
 use Dbp\Relay\PortfolioBundle\Handler\CleanupResult;
+use Dbp\Relay\PortfolioBundle\Handler\RenderResult;
 use Dbp\Relay\PortfolioBundle\Handler\StatusDisplay;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowActionResult;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowData;
@@ -216,6 +217,11 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
         }
 
         return ['documents' => $result];
+    }
+
+    public function getRenderResponse(WorkflowData $workflow, string $renderId, string $lang): RenderResult
+    {
+        throw new \RuntimeException(sprintf("Workflow '%s' does not support rendering.", $workflow->getId()));
     }
 
     public function ping(WorkflowData $workflow): ?WorkflowActionResult
