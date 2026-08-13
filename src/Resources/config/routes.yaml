@@ -1,3 +1,7 @@
 portfolio_render:
   resource: ../../Render/
   type: attribute
+
+portfolio_sign_api:
+  resource: ../../SignApi/
+  type: attribute

@@ -7,6 +7,7 @@ namespace Dbp\Relay\PortfolioBundle\DependencyInjection;
 use Dbp\Relay\CoreBundle\Doctrine\DateTimeImmutableUtcType;
 use Dbp\Relay\CoreBundle\Extension\ExtensionTrait;
 use Dbp\Relay\PortfolioBundle\Authorization\AuthorizationService;
+use Dbp\Relay\PortfolioBundle\SignApi\SignCredentials;
 use Symfony\Component\Config\FileLocator;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Extension\PrependExtensionInterface;
@@ -35,6 +36,9 @@ class DbpRelayPortfolioExtension extends ConfigurableExtension implements Prepen
         $container->setParameter('doctrine.dbal.connection_factory.types', $typeDefinition);
 
         $container->getDefinition(AuthorizationService::class)
+            ->addMethodCall('setConfig', [$mergedConfig]);
+
+        $container->getDefinition(SignCredentials::class)
             ->addMethodCall('setConfig', [$mergedConfig]);
     }
 
