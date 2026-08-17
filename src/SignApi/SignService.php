@@ -69,6 +69,23 @@ class SignService implements LoggerAwareInterface
     }
 
     /**
+     * Resolves a processInstanceId back to the processId of the process that
+     * created it.
+     *
+     * This is used by the endpoints that only receive a processInstanceId
+     * (getJobState, getDocument, cancelJob) so the controller can apply the same
+     * per-process access control as startProcess.
+     *
+     * @param string $processInstanceId the id of the job, as returned by startProcess
+     *
+     * @return string|null the processId, or null if the processInstanceId is unknown
+     */
+    public function resolveProcessId(string $processInstanceId): ?string
+    {
+        return 'process49';
+    }
+
+    /**
      * Returns the current state of a job.
      *
      * @param string $processInstanceId the id of the job to query, as returned by

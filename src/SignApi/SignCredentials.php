@@ -6,16 +6,27 @@ namespace Dbp\Relay\PortfolioBundle\SignApi;
 
 /**
  * Verifies the HTTP Basic credentials the signature client sends on every
- * Sign request.
+ * Sign request and enforces per-process access control.
  *
  * The signature client can only ever send HTTP Basic auth, so this is the single
- * credential gate for the Sign endpoints. The expected username/password come
- * from the bundle configuration (dbp_relay_portfolio.sign_api).
+ * credential gate for the Sign endpoints. The known API users and the per-process
+ * admin lists come from the bundle configuration (dbp_relay_portfolio.sign_api).
  */
 class SignCredentials
 {
-    private ?string $username = null;
-    private ?string $password = null;
+    /**
+     * Map of username => password (as configured).
+     *
+     * @var array<string, string>
+     */
+    private array $users = [];
+
+    /**
+     * Map of processId => list of admin usernames.
+     *
+     * @var array<string, list<string>>
+     */
+    private array $processAdmins = [];
 
     /**
      * @param array<string, mixed> $config
@@ -23,30 +34,55 @@ class SignCredentials
     public function setConfig(array $config): void
     {
         $signApi = $config['sign_api'] ?? [];
-        $this->username = $signApi['username'] ?? null;
-        $this->password = $signApi['password'] ?? null;
+
+        $this->users = [];
+        foreach ($signApi['api_users'] ?? [] as $username => $apiUser) {
+            $password = $apiUser['password'] ?? null;
+            if (is_string($username) && is_string($password)) {
+                $this->users[$username] = $password;
+            }
+        }
+
+        $this->processAdmins = [];
+        foreach ($signApi['processes'] ?? [] as $processId => $process) {
+            $admins = $process['admins'] ?? [];
+            $this->processAdmins[$processId] = array_values(array_filter(
+                $admins,
+                static fn ($admin): bool => is_string($admin),
+            ));
+        }
     }
 
     /**
-     * Returns true if the given credentials match the configured ones.
+     * Authenticates the given credentials against the configured API users and
+     * returns the matched username, or null if the credentials are invalid.
      *
-     * Uses hash_equals for both fields to avoid leaking timing information.
-     * Access is denied if no credentials are configured, or if the request did
-     * not provide a username/password.
+     * Uses hash_equals for the password to avoid leaking timing information.
+     * Access is denied if the request did not provide a username/password, or if
+     * the username is unknown.
      */
-    public function check(?string $username, ?string $password): bool
+    public function authenticate(?string $username, ?string $password): ?string
     {
-        if ($this->username === null || $this->password === null) {
-            return false;
-        }
-
         if ($username === null || $password === null) {
-            return false;
+            return null;
         }
 
-        $userOk = hash_equals($this->username, $username);
-        $passOk = hash_equals($this->password, $password);
+        $expectedPassword = $this->users[$username] ?? null;
+        if ($expectedPassword === null) {
+            return null;
+        }
 
-        return $userOk && $passOk;
+        return hash_equals($expectedPassword, $password) ? $username : null;
+    }
+
+    /**
+     * Returns true if the given username is allowed to use the given process.
+     *
+     * A user is allowed if they are listed in the process' admins. Unknown
+     * processes (not present in the configuration) deny access.
+     */
+    public function isProcessAdmin(string $username, string $processId): bool
+    {
+        return in_array($username, $this->processAdmins[$processId] ?? [], true);
     }
 }

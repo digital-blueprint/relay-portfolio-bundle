@@ -396,4 +396,60 @@ class SignControllerTest extends AbstractTestCase
         $response = $this->controller->cancelJob('pi-1', $request);
         $this->assertSame(Response::HTTP_UNAUTHORIZED, $response->getStatusCode());
     }
+
+    // -- per-process access control ----------------------------------------
+
+    public function testStartProcessValidUserNotAdminIsForbidden(): void
+    {
+        // other_user is a valid api_user but not an admin of foobar42.
+        $request = $this->startProcessRequest(auth: false);
+        $this->applyAuth($request, 'other_user', 'other_pass');
+
+        $response = $this->controller->startProcess('foobar42', $request);
+        $this->assertSame(Response::HTTP_FORBIDDEN, $response->getStatusCode());
+        $this->assertStringContainsString('"error":', (string) $response->getContent());
+    }
+
+    public function testStartProcessUnknownProcessIsForbidden(): void
+    {
+        $response = $this->controller->startProcess('unknown_process', $this->startProcessRequest());
+        $this->assertSame(Response::HTTP_FORBIDDEN, $response->getStatusCode());
+        $this->assertStringContainsString('"error":', (string) $response->getContent());
+    }
+
+    public function testGetJobStateValidUserNotAdminIsForbidden(): void
+    {
+        // resolveProcessId maps every instance to process49, of which
+        // other_user is not an admin.
+        $request = new Request();
+        $this->applyAuth($request, 'other_user', 'other_pass');
+
+        $response = $this->controller->getJobState('pi-1', 'EMAIL', $request);
+        $this->assertSame(Response::HTTP_FORBIDDEN, $response->getStatusCode());
+        $this->assertStringContainsString('"error":', (string) $response->getContent());
+    }
+
+    public function testGetDocumentValidUserNotAdminIsForbidden(): void
+    {
+        $request = new Request();
+        $this->applyAuth($request, 'other_user', 'other_pass');
+
+        $response = $this->controller->getDocument('pi-1', $request);
+        $this->assertSame(Response::HTTP_FORBIDDEN, $response->getStatusCode());
+        $this->assertStringContainsString('"error":', (string) $response->getContent());
+    }
+
+    public function testCancelJobValidUserNotAdminIsForbidden(): void
+    {
+        $request = new Request(content: json_encode([
+            '@class' => self::USER_CLASS,
+            'classifier' => 'EMAIL',
+            'name' => 'owner@example.com',
+        ]));
+        $this->applyAuth($request, 'other_user', 'other_pass');
+
+        $response = $this->controller->cancelJob('pi-1', $request);
+        $this->assertSame(Response::HTTP_FORBIDDEN, $response->getStatusCode());
+        $this->assertStringContainsString('"error":', (string) $response->getContent());
+    }
 }

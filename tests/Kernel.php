@@ -55,8 +55,18 @@ class Kernel extends BaseKernel
         $container->extension('dbp_relay_portfolio', [
             'database_url' => 'sqlite:///:memory:',
             'sign_api' => [
-                'username' => 'svc_user',
-                'password' => 'svc_pass',
+                'api_users' => [
+                    'svc_user' => ['password' => 'svc_pass'],
+                    'other_user' => ['password' => 'other_pass'],
+                ],
+                'processes' => [
+                    'foobar42' => [
+                        'admins' => ['svc_user'],
+                    ],
+                    'process49' => [
+                        'admins' => ['svc_user'],
+                    ],
+                ],
             ],
             'authorization' => [
                 'roles' => [

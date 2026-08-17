@@ -32,7 +32,7 @@ class SignController
     #[Route(path: self::BASE_PATH.'/startProcess/{processId}', name: 'dbp_relay_portfolio_signapi_start_process', methods: ['POST'])]
     public function startProcess(string $processId, Request $request): Response
     {
-        if (($deny = $this->guard($request)) !== null) {
+        if (($deny = $this->guardProcess($request, $processId)) !== null) {
             return $deny;
         }
 
@@ -90,7 +90,7 @@ class SignController
     #[Route(path: self::BASE_PATH.'/getJobState/{processInstanceId}/{nameClassifier}', name: 'dbp_relay_portfolio_signapi_get_job_state', methods: ['GET'])]
     public function getJobState(string $processInstanceId, string $nameClassifier, Request $request): Response
     {
-        if (($deny = $this->guard($request)) !== null) {
+        if (($deny = $this->guardInstance($request, $processInstanceId)) !== null) {
             return $deny;
         }
 
@@ -115,7 +115,7 @@ class SignController
     #[Route(path: self::BASE_PATH.'/getDocument/{processInstanceId}', name: 'dbp_relay_portfolio_signapi_get_document', methods: ['GET'])]
     public function getDocument(string $processInstanceId, Request $request): Response
     {
-        if (($deny = $this->guard($request)) !== null) {
+        if (($deny = $this->guardInstance($request, $processInstanceId)) !== null) {
             return $deny;
         }
 
@@ -135,7 +135,7 @@ class SignController
     #[Route(path: self::BASE_PATH.'/cancelJob/{processInstanceId}', name: 'dbp_relay_portfolio_signapi_cancel_job', methods: ['PUT'])]
     public function cancelJob(string $processInstanceId, Request $request): Response
     {
-        if (($deny = $this->guard($request)) !== null) {
+        if (($deny = $this->guardInstance($request, $processInstanceId)) !== null) {
             return $deny;
         }
 
@@ -169,18 +169,62 @@ class SignController
     }
 
     /**
-     * Enforces HTTP Basic auth. Returns a 401 error Response when the request is
-     * unauthenticated, or null when the credentials are valid.
+     * Enforces HTTP Basic auth and per-process access for a request that carries
+     * a processId directly (startProcess).
+     *
+     * Returns a 401 error Response when the credentials are invalid, a 403 error
+     * Response when the authenticated user is not an admin of the process, or
+     * null when access is granted.
      */
-    private function guard(Request $request): ?Response
+    private function guardProcess(Request $request, string $processId): ?Response
     {
-        [$user, $password] = $this->extractBasicAuth($request);
-
-        if (!$this->credentials->check($user, $password)) {
+        $username = $this->authenticate($request);
+        if ($username === null) {
             return $this->error('Unauthorized.', Response::HTTP_UNAUTHORIZED);
         }
 
+        if (!$this->credentials->isProcessAdmin($username, $processId)) {
+            return $this->error('Forbidden.', Response::HTTP_FORBIDDEN);
+        }
+
         return null;
+    }
+
+    /**
+     * Enforces HTTP Basic auth and per-process access for a request that only
+     * carries a processInstanceId (getJobState, getDocument, cancelJob).
+     *
+     * The processInstanceId is resolved back to its processId via the service so
+     * the same per-process access control as guardProcess() can be applied.
+     *
+     * Returns a 401 error Response when the credentials are invalid, a 403 error
+     * Response when the authenticated user is not an admin of the resolved
+     * process (or the instance is unknown), or null when access is granted.
+     */
+    private function guardInstance(Request $request, string $processInstanceId): ?Response
+    {
+        $username = $this->authenticate($request);
+        if ($username === null) {
+            return $this->error('Unauthorized.', Response::HTTP_UNAUTHORIZED);
+        }
+
+        $processId = $this->service->resolveProcessId($processInstanceId);
+        if ($processId === null || !$this->credentials->isProcessAdmin($username, $processId)) {
+            return $this->error('Forbidden.', Response::HTTP_FORBIDDEN);
+        }
+
+        return null;
+    }
+
+    /**
+     * Authenticates the request's HTTP Basic credentials and returns the matched
+     * username, or null when the credentials are missing or invalid.
+     */
+    private function authenticate(Request $request): ?string
+    {
+        [$user, $password] = $this->extractBasicAuth($request);
+
+        return $this->credentials->authenticate($user, $password);
     }
 
     /**
