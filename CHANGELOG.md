@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.3
+
+* Add multi-user support for the signing workflow API
+
 ## v0.1.2
 
 * Add an experimental signing workflow API
