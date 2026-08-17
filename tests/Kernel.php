@@ -56,8 +56,10 @@ class Kernel extends BaseKernel
             'database_url' => 'sqlite:///:memory:',
             'sign_api' => [
                 'api_users' => [
-                    'svc_user' => ['password' => 'svc_pass'],
-                    'other_user' => ['password' => 'other_pass'],
+                    // password_hash of 'svc_pass'
+                    'svc_user' => ['password_hash' => '$2y$12$C9MtdOiAeuJi9hLHOTm5TOVDLHP3.O.034As8eFyOolAqjIhfVGbu'],
+                    // password_hash of 'other_pass'
+                    'other_user' => ['password_hash' => '$2y$12$szooYSPfMqDocxv3IxBY/.Nus5H3rM0WAM2KgMersPIpT5YSQTNby'],
                 ],
                 'processes' => [
                     'foobar42' => [

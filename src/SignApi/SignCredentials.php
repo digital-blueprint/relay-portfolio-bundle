@@ -15,7 +15,7 @@ namespace Dbp\Relay\PortfolioBundle\SignApi;
 class SignCredentials
 {
     /**
-     * Map of username => password (as configured).
+     * Map of username => password hash (as configured).
      *
      * @var array<string, string>
      */
@@ -37,9 +37,9 @@ class SignCredentials
 
         $this->users = [];
         foreach ($signApi['api_users'] ?? [] as $username => $apiUser) {
-            $password = $apiUser['password'] ?? null;
-            if (is_string($username) && is_string($password)) {
-                $this->users[$username] = $password;
+            $passwordHash = $apiUser['password_hash'] ?? null;
+            if (is_string($username) && is_string($passwordHash)) {
+                $this->users[$username] = $passwordHash;
             }
         }
 
@@ -57,7 +57,8 @@ class SignCredentials
      * Authenticates the given credentials against the configured API users and
      * returns the matched username, or null if the credentials are invalid.
      *
-     * Uses hash_equals for the password to avoid leaking timing information.
+     * Uses password_verify to compare the provided password against the stored
+     * hash, which is inherently constant-time to avoid leaking timing information.
      * Access is denied if the request did not provide a username/password, or if
      * the username is unknown.
      */
@@ -67,12 +68,12 @@ class SignCredentials
             return null;
         }
 
-        $expectedPassword = $this->users[$username] ?? null;
-        if ($expectedPassword === null) {
+        $expectedHash = $this->users[$username] ?? null;
+        if ($expectedHash === null) {
             return null;
         }
 
-        return hash_equals($expectedPassword, $password) ? $username : null;
+        return password_verify($password, $expectedHash) ? $username : null;
     }
 
     /**
