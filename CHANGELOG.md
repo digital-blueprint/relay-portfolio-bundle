@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.4
+
+* Add support for api-platform 5.0
+
 ## v0.1.3
 
 * Add multi-user support for the signing workflow API
