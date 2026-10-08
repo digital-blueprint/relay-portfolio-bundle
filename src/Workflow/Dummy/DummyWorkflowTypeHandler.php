@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Dbp\Relay\PortfolioBundle\DummyWorkflow;
+namespace Dbp\Relay\PortfolioBundle\Workflow\Dummy;
 
 use Dbp\Relay\PortfolioBundle\Handler\Action;
 use Dbp\Relay\PortfolioBundle\Handler\CleanupResult;
@@ -36,11 +36,11 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
     ) {
         $translator = new Translator('en');
         $translator->addLoader('yaml', new YamlFileLoader());
-        $translator->addResource('yaml', __DIR__.'/translations/messages.en.yaml', 'en');
-        $translator->addResource('yaml', __DIR__.'/translations/messages.de.yaml', 'de');
+        $translator->addResource('yaml', __DIR__.'/Resources/translations/messages.en.yaml', 'en');
+        $translator->addResource('yaml', __DIR__.'/Resources/translations/messages.de.yaml', 'de');
         $this->translator = $translator;
 
-        $this->twig = new Environment(new FilesystemLoader(__DIR__.'/templates'));
+        $this->twig = new Environment(new FilesystemLoader(__DIR__.'/Resources/templates'));
     }
 
     public function create(array $input): array

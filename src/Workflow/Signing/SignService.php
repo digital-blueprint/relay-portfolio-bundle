@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Dbp\Relay\PortfolioBundle\DummyWorkflow;
+namespace Dbp\Relay\PortfolioBundle\Workflow\Signing;
 
 use Dbp\Relay\PortfolioBundle\SignApi\SignJobDescription;
 use Dbp\Relay\PortfolioBundle\SignApi\SignJobState;
@@ -29,7 +29,7 @@ use Symfony\Component\Uid\Uuid;
  *   - getDocument  -> returns a fixed sample PDF
  */
 #[AutoconfigureTag('dbp.relay.portfolio.sign_service', ['process_id' => 'process49'])]
-class DummySignService implements SignServiceInterface, LoggerAwareInterface
+class SignService implements SignServiceInterface, LoggerAwareInterface
 {
     use LoggerAwareTrait;
 

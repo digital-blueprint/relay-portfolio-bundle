@@ -49,7 +49,8 @@ return static function (ContainerConfigurator $configurator): void {
         ->autowire()
         ->autoconfigure();
 
-    $services->load('Dbp\\Relay\\PortfolioBundle\\DummyWorkflow\\', '../../DummyWorkflow')
+    $services->load('Dbp\\Relay\\PortfolioBundle\\Workflow\\', '../../Workflow')
+        ->exclude('../../Workflow/*/Resources')
         ->autowire()
         ->autoconfigure();
 

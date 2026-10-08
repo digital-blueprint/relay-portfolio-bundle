@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace Dbp\Relay\PortfolioBundle\Tests;
 
-use Dbp\Relay\PortfolioBundle\DummyWorkflow\SigningWorkflowTypeHandler;
 use Dbp\Relay\PortfolioBundle\Handler\Action;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowData;
 use Dbp\Relay\PortfolioBundle\Persistence\WorkflowPersistence;
 use Dbp\Relay\PortfolioBundle\Service\WorkflowService;
+use Dbp\Relay\PortfolioBundle\Workflow\Signing\SigningWorkflowTypeHandler;
 
 class SigningWorkflowTest extends AbstractTestCase
 {

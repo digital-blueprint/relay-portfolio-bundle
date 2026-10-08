@@ -15,21 +15,3 @@ signing_workflow:
         completed_text: 'All %total% document(s) have been signed successfully.'
         pending_title: 'Signing in progress'
         pending_text: '%signed% / %total% document(s) signed'
-
-dummy_workflow:
-    name:
-        untitled: 'Untitled'
-    state:
-        completed: 'Completed'
-        completed_desc: 'Workflow completed. Counter was: %count%'
-        waiting: 'Waiting'
-        waiting_desc: 'Waiting for input. Counter: %count%'
-    action:
-        increment: 'Increment Counter'
-        complete: 'Complete'
-        reset: 'Reset'
-        view: 'View Details'
-        show_render: 'Show Rendered Page'
-    message:
-        completed_title: 'Workflow completed'
-        completed_text: 'The workflow has been completed successfully.'
