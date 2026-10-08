@@ -267,6 +267,10 @@ class SignController
      */
     private function error(string $message, int $status): JsonResponse
     {
-        return new JsonResponse(['error' => $message], $status);
+        $headers = $status === Response::HTTP_UNAUTHORIZED
+            ? ['WWW-Authenticate' => 'Basic realm="Sign API"']
+            : [];
+
+        return new JsonResponse(['error' => $message], $status, $headers);
     }
 }

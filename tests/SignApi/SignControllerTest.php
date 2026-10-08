@@ -364,9 +364,16 @@ class SignControllerTest extends AbstractTestCase
             $this->applyAuth($request, $username, $password);
         }
 
-        $this->assertSame(Response::HTTP_UNAUTHORIZED, $controller->getJobState('instance', 'EMAIL', $request)->getStatusCode());
-        $this->assertSame(Response::HTTP_UNAUTHORIZED, $controller->getDocument('instance', $request)->getStatusCode());
-        $this->assertSame(Response::HTTP_UNAUTHORIZED, $controller->cancelJob('instance', $request)->getStatusCode());
+        $responses = [
+            $controller->startProcess('test_process', $request),
+            $controller->getJobState('instance', 'EMAIL', $request),
+            $controller->getDocument('instance', $request),
+            $controller->cancelJob('instance', $request),
+        ];
+        foreach ($responses as $response) {
+            $this->assertSame(Response::HTTP_UNAUTHORIZED, $response->getStatusCode());
+            $this->assertSame('Basic realm="Sign API"', $response->headers->get('WWW-Authenticate'));
+        }
     }
 
     public static function unauthenticatedCredentialsProvider(): iterable
@@ -479,6 +486,7 @@ class SignControllerTest extends AbstractTestCase
 
         $response = $this->controller->startProcess('foobar42', $request);
         $this->assertSame(Response::HTTP_FORBIDDEN, $response->getStatusCode());
+        $this->assertFalse($response->headers->has('WWW-Authenticate'));
         $this->assertStringContainsString('"error":', (string) $response->getContent());
     }
 
