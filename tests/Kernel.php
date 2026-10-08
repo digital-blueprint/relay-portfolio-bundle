@@ -37,7 +37,7 @@ class Kernel extends BaseKernel
                     'foobar42' => [
                         'admins' => ['svc_user'],
                     ],
-                    'process49' => [
+                    'test_process' => [
                         'admins' => ['svc_user'],
                     ],
                 ],

@@ -7,9 +7,11 @@ namespace Dbp\Relay\PortfolioBundle\Tests\SignApi;
 use Dbp\Relay\PortfolioBundle\SignApi\SignController;
 use Dbp\Relay\PortfolioBundle\SignApi\SignCredentials;
 use Dbp\Relay\PortfolioBundle\SignApi\SignException;
+use Dbp\Relay\PortfolioBundle\SignApi\SignJobDescription;
 use Dbp\Relay\PortfolioBundle\SignApi\SignJobState;
 use Dbp\Relay\PortfolioBundle\SignApi\SignJobStateResponse;
-use Dbp\Relay\PortfolioBundle\SignApi\SignService;
+use Dbp\Relay\PortfolioBundle\SignApi\SignServiceInterface;
+use Dbp\Relay\PortfolioBundle\SignApi\SignServiceRegistry;
 use Dbp\Relay\PortfolioBundle\Tests\AbstractTestCase;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
@@ -28,14 +30,17 @@ class SignControllerTest extends AbstractTestCase
     private const EXTERNAL_USER_CLASS = 'com.example.api.ExternalUser';
 
     private SignController $controller;
+    private string $processInstanceId;
 
     protected function setUp(): void
     {
         parent::setUp();
 
-        $service = $this->container->get(SignService::class);
+        $registry = $this->container->get(SignServiceRegistry::class);
         $credentials = $this->container->get(SignCredentials::class);
-        $this->controller = new SignController($service, $credentials);
+        $this->controller = new SignController($registry, $credentials);
+        $service = $registry->getService('test_process');
+        $this->processInstanceId = $service->startProcess('test_process', SignJobDescription::fromArray($this->jobDescription()), '%PDF', []);
     }
 
     private function jobDescription(): array
@@ -107,6 +112,15 @@ class SignControllerTest extends AbstractTestCase
         $request->headers->set('Authorization', 'Basic '.base64_encode($user.':'.$password));
         $request->server->set('PHP_AUTH_USER', $user);
         $request->server->set('PHP_AUTH_PW', $password);
+    }
+
+    private function controllerWithService(TestSignService $service): SignController
+    {
+        $registry = new SignServiceRegistry();
+        $registry->addService('test_process', $service);
+        $this->processInstanceId = $service->startProcess('test_process', SignJobDescription::fromArray($this->jobDescription()), '%PDF', []);
+
+        return new SignController($registry, $this->container->get(SignCredentials::class));
     }
 
     // -- startProcess ------------------------------------------------------
@@ -191,12 +205,12 @@ class SignControllerTest extends AbstractTestCase
         $request = new Request();
         $this->applyAuth($request);
 
-        $response = $this->controller->getJobState('pi-1', 'EMAIL', $request);
+        $response = $this->controller->getJobState($this->processInstanceId, 'EMAIL', $request);
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
 
         $payload = json_decode((string) $response->getContent(), true);
         $this->assertArrayHasKey('state', $payload);
-        $this->assertSame(SignService::DEFAULT_JOB_STATE->value, $payload['state']);
+        $this->assertSame(SignJobState::ACTIVE->value, $payload['state']);
     }
 
     #[DataProvider('validNameClassifierProvider')]
@@ -205,7 +219,7 @@ class SignControllerTest extends AbstractTestCase
         $request = new Request();
         $this->applyAuth($request);
 
-        $response = $this->controller->getJobState('pi-1', $nameClassifier, $request);
+        $response = $this->controller->getJobState($this->processInstanceId, $nameClassifier, $request);
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
     }
 
@@ -224,7 +238,7 @@ class SignControllerTest extends AbstractTestCase
         $request = new Request();
         $this->applyAuth($request);
 
-        $response = $this->controller->getJobState('pi-1', 'NOPE', $request);
+        $response = $this->controller->getJobState($this->processInstanceId, 'NOPE', $request);
         $this->assertSame(Response::HTTP_BAD_REQUEST, $response->getStatusCode());
         $this->assertStringContainsString('"error":', (string) $response->getContent());
     }
@@ -236,7 +250,7 @@ class SignControllerTest extends AbstractTestCase
         $request = new Request();
         $this->applyAuth($request);
 
-        $response = $this->controller->getDocument('pi-1', $request);
+        $response = $this->controller->getDocument($this->processInstanceId, $request);
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
         $this->assertSame('application/pdf', $response->headers->get('Content-Type'));
         $this->assertStringStartsWith('%PDF', (string) $response->getContent());
@@ -245,18 +259,18 @@ class SignControllerTest extends AbstractTestCase
     public function testGetDocumentReturns404WhenNoDocument(): void
     {
         // Service that reports "no document available" by returning null.
-        $service = new class extends SignService {
+        $service = new class extends TestSignService {
             public function getDocument(string $processInstanceId): ?string
             {
                 return null;
             }
         };
-        $controller = new SignController($service, $this->container->get(SignCredentials::class));
+        $controller = $this->controllerWithService($service);
 
         $request = new Request();
         $this->applyAuth($request);
 
-        $response = $controller->getDocument('pi-unknown', $request);
+        $response = $controller->getDocument($this->processInstanceId, $request);
         $this->assertSame(Response::HTTP_NOT_FOUND, $response->getStatusCode());
         $this->assertStringContainsString('"error":', (string) $response->getContent());
     }
@@ -264,18 +278,18 @@ class SignControllerTest extends AbstractTestCase
     public function testServiceExceptionIsMappedToItsStatus(): void
     {
         // Service that raises a SignException with a specific status.
-        $service = new class extends SignService {
+        $service = new class extends TestSignService {
             public function getJobState(string $processInstanceId, string $nameClassifier): SignJobStateResponse
             {
                 throw SignException::jobNotFound($processInstanceId);
             }
         };
-        $controller = new SignController($service, $this->container->get(SignCredentials::class));
+        $controller = $this->controllerWithService($service);
 
         $request = new Request();
         $this->applyAuth($request);
 
-        $response = $controller->getJobState('pi-unknown', 'EMAIL', $request);
+        $response = $controller->getJobState($this->processInstanceId, 'EMAIL', $request);
         $this->assertSame(Response::HTTP_NOT_FOUND, $response->getStatusCode());
         $this->assertStringContainsString('"error":', (string) $response->getContent());
     }
@@ -291,7 +305,7 @@ class SignControllerTest extends AbstractTestCase
         ]));
         $this->applyAuth($request);
 
-        $response = $this->controller->cancelJob('pi-1', $request);
+        $response = $this->controller->cancelJob($this->processInstanceId, $request);
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
 
         $payload = json_decode((string) $response->getContent(), true);
@@ -303,7 +317,7 @@ class SignControllerTest extends AbstractTestCase
         $request = new Request();
         $this->applyAuth($request);
 
-        $response = $this->controller->cancelJob('pi-1', $request);
+        $response = $this->controller->cancelJob($this->processInstanceId, $request);
         $this->assertSame(Response::HTTP_BAD_REQUEST, $response->getStatusCode());
         $this->assertStringContainsString('"error":', (string) $response->getContent());
     }
@@ -317,7 +331,7 @@ class SignControllerTest extends AbstractTestCase
         ]));
         $this->applyAuth($request);
 
-        $response = $this->controller->cancelJob('pi-1', $request);
+        $response = $this->controller->cancelJob($this->processInstanceId, $request);
         $this->assertSame(Response::HTTP_BAD_REQUEST, $response->getStatusCode());
         $this->assertStringContainsString('"error":', (string) $response->getContent());
     }
@@ -330,7 +344,7 @@ class SignControllerTest extends AbstractTestCase
         ]));
         $this->applyAuth($request);
 
-        $response = $this->controller->cancelJob('pi-1', $request);
+        $response = $this->controller->cancelJob($this->processInstanceId, $request);
         $this->assertSame(Response::HTTP_BAD_REQUEST, $response->getStatusCode());
         $this->assertStringContainsString('"error":', (string) $response->getContent());
     }
@@ -399,6 +413,39 @@ class SignControllerTest extends AbstractTestCase
 
     // -- per-process access control ----------------------------------------
 
+    public function testResolvesProcessOnlyOnce(): void
+    {
+        $service = $this->createMock(SignServiceInterface::class);
+        $service->expects($this->once())->method('resolveProcessId')->with('instance')->willReturn('test_process');
+        $service->method('getJobState')->willReturn(new SignJobStateResponse(SignJobState::ACTIVE));
+        $registry = new SignServiceRegistry();
+        $registry->addService('test_process', $service);
+        $controller = new SignController($registry, $this->container->get(SignCredentials::class));
+        $request = new Request();
+        $this->applyAuth($request);
+
+        $this->assertSame(Response::HTTP_OK, $controller->getJobState('instance', 'EMAIL', $request)->getStatusCode());
+    }
+
+    public function testConfiguredProcessWithoutImplementationReturns404(): void
+    {
+        $controller = new SignController(new SignServiceRegistry(), $this->container->get(SignCredentials::class));
+        $response = $controller->startProcess('foobar42', $this->startProcessRequest());
+
+        $this->assertSame(Response::HTTP_NOT_FOUND, $response->getStatusCode());
+        $this->assertStringContainsString('No signing service registered', (string) $response->getContent());
+    }
+
+    public function testUnknownInstanceIsForbiddenForAllEndpoints(): void
+    {
+        $request = new Request();
+        $this->applyAuth($request);
+
+        $this->assertSame(Response::HTTP_FORBIDDEN, $this->controller->getJobState('unknown', 'EMAIL', $request)->getStatusCode());
+        $this->assertSame(Response::HTTP_FORBIDDEN, $this->controller->getDocument('unknown', $request)->getStatusCode());
+        $this->assertSame(Response::HTTP_FORBIDDEN, $this->controller->cancelJob('unknown', $request)->getStatusCode());
+    }
+
     public function testStartProcessValidUserNotAdminIsForbidden(): void
     {
         // other_user is a valid api_user but not an admin of foobar42.
@@ -419,12 +466,12 @@ class SignControllerTest extends AbstractTestCase
 
     public function testGetJobStateValidUserNotAdminIsForbidden(): void
     {
-        // resolveProcessId maps every instance to process49, of which
+        // The instance belongs to test_process, of which
         // other_user is not an admin.
         $request = new Request();
         $this->applyAuth($request, 'other_user', 'other_pass');
 
-        $response = $this->controller->getJobState('pi-1', 'EMAIL', $request);
+        $response = $this->controller->getJobState($this->processInstanceId, 'EMAIL', $request);
         $this->assertSame(Response::HTTP_FORBIDDEN, $response->getStatusCode());
         $this->assertStringContainsString('"error":', (string) $response->getContent());
     }
@@ -434,7 +481,7 @@ class SignControllerTest extends AbstractTestCase
         $request = new Request();
         $this->applyAuth($request, 'other_user', 'other_pass');
 
-        $response = $this->controller->getDocument('pi-1', $request);
+        $response = $this->controller->getDocument($this->processInstanceId, $request);
         $this->assertSame(Response::HTTP_FORBIDDEN, $response->getStatusCode());
         $this->assertStringContainsString('"error":', (string) $response->getContent());
     }
@@ -448,7 +495,7 @@ class SignControllerTest extends AbstractTestCase
         ]));
         $this->applyAuth($request, 'other_user', 'other_pass');
 
-        $response = $this->controller->cancelJob('pi-1', $request);
+        $response = $this->controller->cancelJob($this->processInstanceId, $request);
         $this->assertSame(Response::HTTP_FORBIDDEN, $response->getStatusCode());
         $this->assertStringContainsString('"error":', (string) $response->getContent());
     }

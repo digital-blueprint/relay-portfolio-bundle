@@ -2,3 +2,5 @@ services:
     Dbp\Relay\PortfolioBundle\Tests\DummyWorkflowTypeHandler:
         autoconfigure: true
 
+    Dbp\Relay\PortfolioBundle\Tests\SignApi\TestSignService:
+        autoconfigure: true

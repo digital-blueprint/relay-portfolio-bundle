@@ -2,18 +2,24 @@
 
 declare(strict_types=1);
 
-namespace Dbp\Relay\PortfolioBundle\SignApi;
+namespace Dbp\Relay\PortfolioBundle\DummyWorkflow;
 
+use Dbp\Relay\PortfolioBundle\SignApi\SignJobDescription;
+use Dbp\Relay\PortfolioBundle\SignApi\SignJobState;
+use Dbp\Relay\PortfolioBundle\SignApi\SignJobStateResponse;
+use Dbp\Relay\PortfolioBundle\SignApi\SignServiceInterface;
+use Dbp\Relay\PortfolioBundle\SignApi\SignUser;
 use Psr\Log\LoggerAwareInterface;
 use Psr\Log\LoggerAwareTrait;
 use Psr\Log\NullLogger;
+use Symfony\Component\DependencyInjection\Attribute\AutoconfigureTag;
 use Symfony\Component\Uid\Uuid;
 
 /**
  * Implements the behaviour behind the four Sign endpoints.
  *
- * This is intentionally *stateless* for now: no signature backend and no
- * persistence are wired up yet. The goal is to exercise the API contract
+ * This is a dummy implementation: no signature backend or durable
+ * persistence is wired up. The goal is to exercise the API contract
  * (routing, auth, multipart parsing, response shapes) end-to-end against the
  * signature client and its test client.
  *
@@ -22,7 +28,8 @@ use Symfony\Component\Uid\Uuid;
  *   - cancelJob    -> returns FINISHED_WF_CANCELLED
  *   - getDocument  -> returns a fixed sample PDF
  */
-class SignService implements LoggerAwareInterface
+#[AutoconfigureTag('dbp.relay.portfolio.sign_service', ['process_id' => 'process49'])]
+class DummySignService implements SignServiceInterface, LoggerAwareInterface
 {
     use LoggerAwareTrait;
 
@@ -33,6 +40,7 @@ class SignService implements LoggerAwareInterface
     public const DEFAULT_JOB_STATE = SignJobState::ACTIVE;
 
     private const SIGNED_DOCUMENT_PATH = __DIR__.'/Resources/signed-document.pdf';
+    private const INSTANCE_PREFIX = 'dummy-sign-';
 
     public function __construct()
     {
@@ -55,7 +63,7 @@ class SignService implements LoggerAwareInterface
      */
     public function startProcess(string $processId, SignJobDescription $jobDescription, string $documentToSign, array $attachments): string
     {
-        $processInstanceId = Uuid::v4()->toRfc4122();
+        $processInstanceId = self::INSTANCE_PREFIX.Uuid::v4()->toRfc4122();
 
         $this->logger->info('Sign startProcess', [
             'processId' => $processId,
@@ -69,12 +77,8 @@ class SignService implements LoggerAwareInterface
     }
 
     /**
-     * Resolves a processInstanceId back to the processId of the process that
-     * created it.
-     *
-     * This is used by the endpoints that only receive a processInstanceId
-     * (getJobState, getDocument, cancelJob) so the controller can apply the same
-     * per-process access control as startProcess.
+     * Returns the fixed dummy process ID for dummy-prefixed instances without
+     * keeping state between requests. Other implementations' IDs are ignored.
      *
      * @param string $processInstanceId the id of the job, as returned by startProcess
      *
@@ -82,7 +86,7 @@ class SignService implements LoggerAwareInterface
      */
     public function resolveProcessId(string $processInstanceId): ?string
     {
-        return 'process49';
+        return str_starts_with($processInstanceId, self::INSTANCE_PREFIX) ? 'process49' : null;
     }
 
     /**
@@ -123,7 +127,7 @@ class SignService implements LoggerAwareInterface
      *
      * A real, stateful backend must return null when the job has no downloadable
      * document yet (still active, or an unknown id) so the connector gets a 404.
-     * This stateless implementation always returns the fixed sample PDF.
+     * This dummy implementation always returns the fixed sample PDF.
      *
      * @param string $processInstanceId the id of the job whose document to
      *                                  download, as returned by startProcess

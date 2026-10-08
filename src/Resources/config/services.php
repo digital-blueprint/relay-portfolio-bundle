@@ -9,7 +9,7 @@ use Dbp\Relay\PortfolioBundle\Handler\WorkflowTypeHandlerRegistry;
 use Dbp\Relay\PortfolioBundle\Service\WorkflowService;
 use Dbp\Relay\PortfolioBundle\SignApi\SignController;
 use Dbp\Relay\PortfolioBundle\SignApi\SignCredentials;
-use Dbp\Relay\PortfolioBundle\SignApi\SignService;
+use Dbp\Relay\PortfolioBundle\SignApi\SignServiceRegistry;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
 
 use function Symfony\Component\DependencyInjection\Loader\Configurator\service;
@@ -41,7 +41,7 @@ return static function (ContainerConfigurator $configurator): void {
         ->autowire()
         ->autoconfigure();
 
-    $services->set(SignService::class)
+    $services->set(SignServiceRegistry::class)
         ->autowire()
         ->autoconfigure();
 

@@ -24,7 +24,7 @@ class SignController
     private const BASE_PATH = '/portfolio/_signapi/webservices/rest/api/layer2/v1.0';
 
     public function __construct(
-        private readonly SignService $service,
+        private readonly SignServiceRegistry $registry,
         private readonly SignCredentials $credentials,
     ) {
     }
@@ -76,8 +76,16 @@ class SignController
             }
         }
 
+        $service = $this->registry->getService($processId);
+        if ($service === null) {
+            return $this->error(
+                sprintf("No signing service registered for process '%s'.", $processId),
+                Response::HTTP_NOT_FOUND,
+            );
+        }
+
         try {
-            $processInstanceId = $this->service->startProcess($processId, $jobDescription, $documentBytes, $attachmentBytes);
+            $processInstanceId = $service->startProcess($processId, $jobDescription, $documentBytes, $attachmentBytes);
         } catch (SignException $e) {
             return $this->error($e->getMessage(), $e->getStatusCode());
         }
@@ -90,7 +98,8 @@ class SignController
     #[Route(path: self::BASE_PATH.'/getJobState/{processInstanceId}/{nameClassifier}', name: 'dbp_relay_portfolio_signapi_get_job_state', methods: ['GET'])]
     public function getJobState(string $processInstanceId, string $nameClassifier, Request $request): Response
     {
-        if (($deny = $this->guardInstance($request, $processInstanceId)) !== null) {
+        $processId = $this->registry->resolveProcessId($processInstanceId);
+        if (($deny = $this->guardProcess($request, $processId)) !== null) {
             return $deny;
         }
 
@@ -103,8 +112,13 @@ class SignController
             );
         }
 
+        $service = $this->registry->getService($processId);
+        if ($service === null) {
+            return $this->error(sprintf("Job '%s' was not found.", $processInstanceId), Response::HTTP_NOT_FOUND);
+        }
+
         try {
-            $jobState = $this->service->getJobState($processInstanceId, $nameClassifier);
+            $jobState = $service->getJobState($processInstanceId, $nameClassifier);
         } catch (SignException $e) {
             return $this->error($e->getMessage(), $e->getStatusCode());
         }
@@ -115,11 +129,17 @@ class SignController
     #[Route(path: self::BASE_PATH.'/getDocument/{processInstanceId}', name: 'dbp_relay_portfolio_signapi_get_document', methods: ['GET'])]
     public function getDocument(string $processInstanceId, Request $request): Response
     {
-        if (($deny = $this->guardInstance($request, $processInstanceId)) !== null) {
+        $processId = $this->registry->resolveProcessId($processInstanceId);
+        if (($deny = $this->guardProcess($request, $processId)) !== null) {
             return $deny;
         }
 
-        $pdf = $this->service->getDocument($processInstanceId);
+        $service = $this->registry->getService($processId);
+        if ($service === null) {
+            return $this->error(sprintf("Job '%s' was not found.", $processInstanceId), Response::HTTP_NOT_FOUND);
+        }
+
+        $pdf = $service->getDocument($processInstanceId);
         if ($pdf === null) {
             return $this->error(
                 sprintf("No document is available for job '%s'.", $processInstanceId),
@@ -135,7 +155,8 @@ class SignController
     #[Route(path: self::BASE_PATH.'/cancelJob/{processInstanceId}', name: 'dbp_relay_portfolio_signapi_cancel_job', methods: ['PUT'])]
     public function cancelJob(string $processInstanceId, Request $request): Response
     {
-        if (($deny = $this->guardInstance($request, $processInstanceId)) !== null) {
+        $processId = $this->registry->resolveProcessId($processInstanceId);
+        if (($deny = $this->guardProcess($request, $processId)) !== null) {
             return $deny;
         }
 
@@ -159,8 +180,13 @@ class SignController
             return $this->error($e->getMessage(), $e->getStatusCode());
         }
 
+        $service = $this->registry->getService($processId);
+        if ($service === null) {
+            return $this->error(sprintf("Job '%s' was not found.", $processInstanceId), Response::HTTP_NOT_FOUND);
+        }
+
         try {
-            $state = $this->service->cancelJob($processInstanceId, $user);
+            $state = $service->cancelJob($processInstanceId, $user);
         } catch (SignException $e) {
             return $this->error($e->getMessage(), $e->getStatusCode());
         }
@@ -169,46 +195,19 @@ class SignController
     }
 
     /**
-     * Enforces HTTP Basic auth and per-process access for a request that carries
-     * a processId directly (startProcess).
+     * Enforces HTTP Basic auth and access to the supplied or resolved process ID.
      *
      * Returns a 401 error Response when the credentials are invalid, a 403 error
-     * Response when the authenticated user is not an admin of the process, or
+     * Response when the process is unknown or the user is not an admin, or
      * null when access is granted.
      */
-    private function guardProcess(Request $request, string $processId): ?Response
+    private function guardProcess(Request $request, ?string $processId): ?Response
     {
         $username = $this->authenticate($request);
         if ($username === null) {
             return $this->error('Unauthorized.', Response::HTTP_UNAUTHORIZED);
         }
 
-        if (!$this->credentials->isProcessAdmin($username, $processId)) {
-            return $this->error('Forbidden.', Response::HTTP_FORBIDDEN);
-        }
-
-        return null;
-    }
-
-    /**
-     * Enforces HTTP Basic auth and per-process access for a request that only
-     * carries a processInstanceId (getJobState, getDocument, cancelJob).
-     *
-     * The processInstanceId is resolved back to its processId via the service so
-     * the same per-process access control as guardProcess() can be applied.
-     *
-     * Returns a 401 error Response when the credentials are invalid, a 403 error
-     * Response when the authenticated user is not an admin of the resolved
-     * process (or the instance is unknown), or null when access is granted.
-     */
-    private function guardInstance(Request $request, string $processInstanceId): ?Response
-    {
-        $username = $this->authenticate($request);
-        if ($username === null) {
-            return $this->error('Unauthorized.', Response::HTTP_UNAUTHORIZED);
-        }
-
-        $processId = $this->service->resolveProcessId($processInstanceId);
         if ($processId === null || !$this->credentials->isProcessAdmin($username, $processId)) {
             return $this->error('Forbidden.', Response::HTTP_FORBIDDEN);
         }
