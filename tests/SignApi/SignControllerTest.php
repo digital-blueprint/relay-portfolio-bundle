@@ -351,6 +351,31 @@ class SignControllerTest extends AbstractTestCase
 
     // -- auth --------------------------------------------------------------
 
+    #[DataProvider('unauthenticatedCredentialsProvider')]
+    public function testUnauthenticatedRequestsDoNotResolveProcesses(?string $username, ?string $password): void
+    {
+        $service = $this->createMock(SignServiceInterface::class);
+        $service->expects($this->never())->method('resolveProcessId');
+        $registry = new SignServiceRegistry();
+        $registry->addService('test_process', $service);
+        $controller = new SignController($registry, $this->container->get(SignCredentials::class));
+        $request = new Request();
+        if ($username !== null && $password !== null) {
+            $this->applyAuth($request, $username, $password);
+        }
+
+        $this->assertSame(Response::HTTP_UNAUTHORIZED, $controller->getJobState('instance', 'EMAIL', $request)->getStatusCode());
+        $this->assertSame(Response::HTTP_UNAUTHORIZED, $controller->getDocument('instance', $request)->getStatusCode());
+        $this->assertSame(Response::HTTP_UNAUTHORIZED, $controller->cancelJob('instance', $request)->getStatusCode());
+    }
+
+    public static function unauthenticatedCredentialsProvider(): iterable
+    {
+        yield 'missing credentials' => [null, null];
+        yield 'unknown user' => ['unknown_user', 'password'];
+        yield 'wrong password' => [self::USER, 'wrong_password'];
+    }
+
     public function testStartProcessMissingAuthIsUnauthorized(): void
     {
         $response = $this->controller->startProcess('foobar42', new Request());

@@ -32,7 +32,12 @@ class SignController
     #[Route(path: self::BASE_PATH.'/startProcess/{processId}', name: 'dbp_relay_portfolio_signapi_start_process', methods: ['POST'])]
     public function startProcess(string $processId, Request $request): Response
     {
-        if (($deny = $this->guardProcess($request, $processId)) !== null) {
+        $username = $this->authenticate($request);
+        if ($username === null) {
+            return $this->error('Unauthorized.', Response::HTTP_UNAUTHORIZED);
+        }
+
+        if (($deny = $this->guardProcess($username, $processId)) !== null) {
             return $deny;
         }
 
@@ -98,8 +103,13 @@ class SignController
     #[Route(path: self::BASE_PATH.'/getJobState/{processInstanceId}/{nameClassifier}', name: 'dbp_relay_portfolio_signapi_get_job_state', methods: ['GET'])]
     public function getJobState(string $processInstanceId, string $nameClassifier, Request $request): Response
     {
+        $username = $this->authenticate($request);
+        if ($username === null) {
+            return $this->error('Unauthorized.', Response::HTTP_UNAUTHORIZED);
+        }
+
         $processId = $this->registry->resolveProcessId($processInstanceId);
-        if (($deny = $this->guardProcess($request, $processId)) !== null) {
+        if (($deny = $this->guardProcess($username, $processId)) !== null) {
             return $deny;
         }
 
@@ -129,8 +139,13 @@ class SignController
     #[Route(path: self::BASE_PATH.'/getDocument/{processInstanceId}', name: 'dbp_relay_portfolio_signapi_get_document', methods: ['GET'])]
     public function getDocument(string $processInstanceId, Request $request): Response
     {
+        $username = $this->authenticate($request);
+        if ($username === null) {
+            return $this->error('Unauthorized.', Response::HTTP_UNAUTHORIZED);
+        }
+
         $processId = $this->registry->resolveProcessId($processInstanceId);
-        if (($deny = $this->guardProcess($request, $processId)) !== null) {
+        if (($deny = $this->guardProcess($username, $processId)) !== null) {
             return $deny;
         }
 
@@ -155,8 +170,13 @@ class SignController
     #[Route(path: self::BASE_PATH.'/cancelJob/{processInstanceId}', name: 'dbp_relay_portfolio_signapi_cancel_job', methods: ['PUT'])]
     public function cancelJob(string $processInstanceId, Request $request): Response
     {
+        $username = $this->authenticate($request);
+        if ($username === null) {
+            return $this->error('Unauthorized.', Response::HTTP_UNAUTHORIZED);
+        }
+
         $processId = $this->registry->resolveProcessId($processInstanceId);
-        if (($deny = $this->guardProcess($request, $processId)) !== null) {
+        if (($deny = $this->guardProcess($username, $processId)) !== null) {
             return $deny;
         }
 
@@ -195,19 +215,13 @@ class SignController
     }
 
     /**
-     * Enforces HTTP Basic auth and access to the supplied or resolved process ID.
+     * Enforces process access for an already authenticated user.
      *
-     * Returns a 401 error Response when the credentials are invalid, a 403 error
-     * Response when the process is unknown or the user is not an admin, or
+     * Returns a 403 error Response when the process is unknown or the user is not an admin, or
      * null when access is granted.
      */
-    private function guardProcess(Request $request, ?string $processId): ?Response
+    private function guardProcess(string $username, ?string $processId): ?Response
     {
-        $username = $this->authenticate($request);
-        if ($username === null) {
-            return $this->error('Unauthorized.', Response::HTTP_UNAUTHORIZED);
-        }
-
         if ($processId === null || !$this->credentials->isProcessAdmin($username, $processId)) {
             return $this->error('Forbidden.', Response::HTTP_FORBIDDEN);
         }
