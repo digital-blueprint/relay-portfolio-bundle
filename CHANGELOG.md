@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.5
+
+* Initial blob integration
+
 ## v0.1.4
 
 * Add support for api-platform 5.0
