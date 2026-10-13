@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Dbp\Relay\PortfolioBundle\Tests;
 
+use Dbp\Relay\BlobLibrary\Api\BlobApi;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowTypeHandlerHelper;
+use Dbp\Relay\PortfolioBundle\Service\WorkflowFileService;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpFoundation\UriSigner;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
@@ -32,7 +34,8 @@ class WorkflowTypeHandlerHelperTest extends TestCase
             }
         );
 
-        $this->helper = new WorkflowTypeHandlerHelper($urlGenerator, $this->uriSigner);
+        $files = new WorkflowFileService(BlobApi::createHttpModeApi('test-bucket', 'test-key', 'https://blob.example'));
+        $this->helper = new WorkflowTypeHandlerHelper($urlGenerator, $this->uriSigner, $files);
     }
 
     public function testGetTaskUrl(): void

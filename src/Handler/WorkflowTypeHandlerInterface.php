@@ -12,12 +12,14 @@ interface WorkflowTypeHandlerInterface
      * Called once by WorkflowService::createWorkflow() before persisting. Use this to
      * generate stable IDs, enforce defaults, and validate input. The returned array
      * becomes the persisted internalState; the input array is never stored directly.
+     * The workflow ID is allocated before initialization, but no workflow is persisted
+     * yet. Files stored via WorkflowFileService under this ID are cleaned up on failure.
      *
      * @param array<string, mixed> $input
      *
      * @return array<string, mixed>
      */
-    public function create(array $input): array;
+    public function create(string $workflowId, array $input): array;
 
     /**
      * Returns the workflow type identifier this handler is responsible for.

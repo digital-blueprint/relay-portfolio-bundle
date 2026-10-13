@@ -43,7 +43,7 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
         $this->twig = new Environment(new FilesystemLoader(__DIR__.'/Resources/templates'));
     }
 
-    public function create(array $input): array
+    public function create(string $workflowId, array $input): array
     {
         $input['title'] ??= [];
         $input['counter'] ??= 0;

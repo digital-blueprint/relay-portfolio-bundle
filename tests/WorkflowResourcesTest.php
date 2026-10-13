@@ -24,7 +24,7 @@ class WorkflowResourcesTest extends AbstractTestCase
     public function testDummyWorkflowResources(): void
     {
         $handler = $this->container->get(DummyWorkflowTypeHandler::class);
-        $workflow = new WorkflowData('wf-dummy', $handler->getType(), true, $handler->create([]), new \DateTimeImmutable());
+        $workflow = new WorkflowData('wf-dummy', $handler->getType(), true, $handler->create('wf-dummy', []), new \DateTimeImmutable());
 
         $this->assertSame('Untitled', $handler->getName($workflow, 'en'));
         $this->assertSame('Unbenannt', $handler->getName($workflow, 'de'));
@@ -40,7 +40,7 @@ class WorkflowResourcesTest extends AbstractTestCase
     public function testSigningWorkflowTranslations(): void
     {
         $handler = $this->container->get(SigningWorkflowTypeHandler::class);
-        $workflow = new WorkflowData('wf-signing', $handler->getType(), true, $handler->create([]), new \DateTimeImmutable());
+        $workflow = new WorkflowData('wf-signing', $handler->getType(), true, $handler->create('wf-signing', []), new \DateTimeImmutable());
 
         $this->assertSame('Signing Workflow', $handler->getName($workflow, 'en'));
         $this->assertSame('Signatur-Workflow', $handler->getName($workflow, 'de'));

@@ -25,6 +25,7 @@ class WorkflowService implements LoggerAwareInterface
     public function __construct(
         private readonly EntityManagerInterface $em,
         private readonly WorkflowTypeHandlerRegistry $workflowTypeHandlerRegistry,
+        private readonly WorkflowFileService $fileService,
     ) {
         $this->logger = new NullLogger();
     }
@@ -39,28 +40,46 @@ class WorkflowService implements LoggerAwareInterface
      * The handler's create() method is called first to transform the caller-supplied
      * input into the actual internalState. This allows handlers to generate stable IDs,
      * set defaults, and validate input before anything is persisted.
+     * Initialization receives the final workflow ID for file ownership. If creation
+     * fails, uploaded files are removed on a best-effort basis.
      *
      * @param array<string, mixed> $input
      */
     public function createWorkflow(string $type, array $input): WorkflowPersistence
     {
         $handler = $this->workflowTypeHandlerRegistry->getHandler($type);
-        $internalState = $handler->create($input);
+        $workflowId = Uuid::v4()->toRfc4122();
 
-        $now = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+        try {
+            $internalState = $handler->create($workflowId, $input);
 
-        $workflow = new WorkflowPersistence();
-        $workflow->setId(Uuid::v4()->toRfc4122());
-        $workflow->setType($type);
-        $workflow->setInternalState($internalState);
-        $workflow->setCreatedAt($now);
-        $workflow->setUpdatedAt($now);
+            $now = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
 
-        $this->em->wrapInTransaction(function () use ($workflow): void {
-            $this->em->persist($workflow);
-            $this->em->flush();
-            $this->reconcileTasks($workflow);
-        });
+            $workflow = new WorkflowPersistence();
+            $workflow->setId($workflowId);
+            $workflow->setType($type);
+            $workflow->setInternalState($internalState);
+            $workflow->setCreatedAt($now);
+            $workflow->setUpdatedAt($now);
+
+            $this->em->wrapInTransaction(function () use ($workflow): void {
+                $this->em->persist($workflow);
+                $this->em->flush();
+                $this->reconcileTasks($workflow);
+            });
+        } catch (\Throwable $error) {
+            try {
+                $this->fileService->deleteAll($workflowId);
+            } catch (\Throwable $cleanupError) {
+                $this->logger->error('Portfolio creation: failed to clean up uploaded files.', [
+                    'workflowId' => $workflowId,
+                    'type' => $type,
+                    'exception' => $cleanupError,
+                ]);
+            }
+
+            throw $error;
+        }
 
         return $workflow;
     }

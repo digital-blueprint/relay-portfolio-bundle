@@ -8,6 +8,7 @@
         "ext-json": "*",
         "api-platform/metadata": "^4.2 || ^5.0",
         "api-platform/openapi": "^4.2 || ^5.0",
+        "dbp/relay-blob-library": "^0.3.11",
         "dbp/relay-core-bundle": "^0.1.253",
         "doctrine/collections": "^2.6",
         "doctrine/dbal": "^3.8 || ^4.0",
@@ -29,6 +30,7 @@
         "twig/twig": "^3.8"
     },
     "require-dev": {
+        "dbp/relay-blob-bundle": "^0.2.16",
         "friendsofphp/php-cs-fixer": "^3.50",
         "phpstan/phpstan": "^2.1.17",
         "phpstan/phpstan-phpunit": "^2.0.6",

@@ -69,7 +69,7 @@ class SigningWorkflowTest extends AbstractTestCase
 
     public function testCreateGeneratesTaskId(): void
     {
-        $state = $this->handler->create(['documents' => $this->twoDocumentInput]);
+        $state = $this->handler->create('wf-signing', ['documents' => $this->twoDocumentInput]);
 
         $this->assertArrayHasKey('taskId', $state);
         $this->assertNotEmpty($state['taskId']);
@@ -77,7 +77,7 @@ class SigningWorkflowTest extends AbstractTestCase
 
     public function testCreateSetsSignedFalse(): void
     {
-        $state = $this->handler->create(['documents' => $this->twoDocumentInput]);
+        $state = $this->handler->create('wf-signing', ['documents' => $this->twoDocumentInput]);
 
         foreach ($state['documents'] as $doc) {
             $this->assertFalse($doc['signed']);
@@ -86,7 +86,7 @@ class SigningWorkflowTest extends AbstractTestCase
 
     public function testCreateGeneratesPerDocumentIds(): void
     {
-        $state = $this->handler->create(['documents' => $this->twoDocumentInput]);
+        $state = $this->handler->create('wf-signing', ['documents' => $this->twoDocumentInput]);
 
         foreach ($state['documents'] as $doc) {
             // Stored id is a bare UUID; the taskId prefix is added on-the-fly in getTaskResponse()
@@ -101,7 +101,7 @@ class SigningWorkflowTest extends AbstractTestCase
 
     public function testCreatePreservesDocumentFields(): void
     {
-        $state = $this->handler->create(['documents' => $this->twoDocumentInput]);
+        $state = $this->handler->create('wf-signing', ['documents' => $this->twoDocumentInput]);
         $docs = $state['documents'];
 
         $this->assertSame('https://example.com/doc1.pdf', $docs[0]['url']);
@@ -112,8 +112,8 @@ class SigningWorkflowTest extends AbstractTestCase
 
     public function testCreateProducesUniqueTaskIds(): void
     {
-        $state1 = $this->handler->create(['documents' => $this->twoDocumentInput]);
-        $state2 = $this->handler->create(['documents' => $this->twoDocumentInput]);
+        $state1 = $this->handler->create('wf-signing', ['documents' => $this->twoDocumentInput]);
+        $state2 = $this->handler->create('wf-signing', ['documents' => $this->twoDocumentInput]);
 
         $this->assertNotSame($state1['taskId'], $state2['taskId']);
     }

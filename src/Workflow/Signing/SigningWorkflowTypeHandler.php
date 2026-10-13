@@ -59,7 +59,7 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
         $this->translator = $translator;
     }
 
-    public function create(array $input): array
+    public function create(string $workflowId, array $input): array
     {
         $taskId = Uuid::v4()->toRfc4122();
         $documents = $input['documents'] ?? [];

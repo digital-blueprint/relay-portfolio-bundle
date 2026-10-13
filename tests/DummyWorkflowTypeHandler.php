@@ -26,7 +26,7 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
     /** @var string[] IDs for which canUse() returns false */
     public array $blockedIds = [];
 
-    public function create(array $input): array
+    public function create(string $workflowId, array $input): array
     {
         return $input;
     }

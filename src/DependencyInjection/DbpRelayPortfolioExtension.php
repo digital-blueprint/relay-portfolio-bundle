@@ -4,14 +4,17 @@ declare(strict_types=1);
 
 namespace Dbp\Relay\PortfolioBundle\DependencyInjection;
 
+use Dbp\Relay\BlobLibrary\Api\BlobApi;
 use Dbp\Relay\CoreBundle\Doctrine\DateTimeImmutableUtcType;
 use Dbp\Relay\CoreBundle\Extension\ExtensionTrait;
 use Dbp\Relay\PortfolioBundle\Authorization\AuthorizationService;
+use Dbp\Relay\PortfolioBundle\Service\WorkflowFileService;
 use Dbp\Relay\PortfolioBundle\SignApi\SignCredentials;
 use Symfony\Component\Config\FileLocator;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Extension\PrependExtensionInterface;
 use Symfony\Component\DependencyInjection\Loader\PhpFileLoader;
+use Symfony\Component\DependencyInjection\Reference;
 use Symfony\Component\HttpKernel\DependencyInjection\ConfigurableExtension;
 
 class DbpRelayPortfolioExtension extends ConfigurableExtension implements PrependExtensionInterface
@@ -40,6 +43,13 @@ class DbpRelayPortfolioExtension extends ConfigurableExtension implements Prepen
 
         $container->getDefinition(SignCredentials::class)
             ->addMethodCall('setConfig', [$mergedConfig]);
+
+        $container->register('dbp.relay.portfolio.blob_api', BlobApi::class)
+            ->setFactory([BlobApi::class, 'createFromConfig'])
+            ->setArguments([$mergedConfig, new Reference('service_container')]);
+
+        $container->register(WorkflowFileService::class, WorkflowFileService::class)
+            ->setArgument('$blobApi', new Reference('dbp.relay.portfolio.blob_api'));
     }
 
     public function prepend(ContainerBuilder $container): void

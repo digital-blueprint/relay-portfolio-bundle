@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Dbp\Relay\PortfolioBundle\Tests;
 
+use Dbp\Relay\BlobBundle\TestUtils\BlobTestUtils;
+use Dbp\Relay\BlobBundle\TestUtils\TestEntityManager as BlobTestEntityManager;
 use Dbp\Relay\CoreBundle\TestUtils\TestAuthorizationService;
 use Dbp\Relay\PortfolioBundle\Authorization\AuthorizationService;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
@@ -21,10 +23,17 @@ abstract class AbstractTestCase extends KernelTestCase
         $this->container = static::getContainer();
         TestEntityManager::setUp($this->container);
         $this->testEntityManager = new TestEntityManager($this->container);
+        new BlobTestEntityManager($this->container);
 
         TestAuthorizationService::setUp(
             $this->container->get(AuthorizationService::class),
             TestAuthorizationService::TEST_USER_IDENTIFIER
         );
+    }
+
+    protected function tearDown(): void
+    {
+        parent::tearDown();
+        BlobTestUtils::tearDown();
     }
 }

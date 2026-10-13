@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Dbp\Relay\PortfolioBundle\DependencyInjection;
 
+use Dbp\Relay\BlobLibrary\Api\BlobApi;
 use Dbp\Relay\CoreBundle\Authorization\AuthorizationConfigDefinition;
 use Symfony\Component\Config\Definition\Builder\NodeDefinition;
 use Symfony\Component\Config\Definition\Builder\TreeBuilder;
@@ -57,6 +58,7 @@ class Configuration implements ConfigurationInterface
                 ->end()
             ->end()
             ->append($this->getAuthNode())
+            ->append(BlobApi::getConfigNodeDefinition()->isRequired())
         ;
 
         return $treeBuilder;

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Dbp\Relay\PortfolioBundle\Handler;
 
+use Dbp\Relay\PortfolioBundle\Service\WorkflowFileService;
 use Symfony\Component\HttpFoundation\UriSigner;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 
@@ -15,7 +16,13 @@ class WorkflowTypeHandlerHelper
     public function __construct(
         private readonly UrlGeneratorInterface $urlGenerator,
         private readonly UriSigner $uriSigner,
+        private readonly WorkflowFileService $fileService,
     ) {
+    }
+
+    public function getFiles(string $workflowId): WorkflowFiles
+    {
+        return new WorkflowFiles($this->fileService, $workflowId);
     }
 
     /**
