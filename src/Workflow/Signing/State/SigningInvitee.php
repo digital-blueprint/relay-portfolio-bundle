@@ -13,7 +13,7 @@ final class SigningInvitee
         public string $id,
         public string $email,
         public ?string $userId = null,
-        public ?string $externalUserName = null,
+        public ?string $displayName = null,
         public ?string $locale = null,
     ) {
     }
@@ -30,7 +30,7 @@ final class SigningInvitee
             id: $data['id'],
             email: $data['email'],
             userId: $data['userId'] ?? null,
-            externalUserName: $data['externalUserName'] ?? null,
+            displayName: $data['displayName'] ?? null,
             locale: $data['locale'] ?? null,
         );
     }

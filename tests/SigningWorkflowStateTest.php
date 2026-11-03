@@ -23,8 +23,8 @@ class SigningWorkflowStateTest extends TestCase
             documentToSignFileId: 'original',
             documentToSignFilename: 'contract.pdf',
             iterations: [
-                new SigningIteration(0, SignCategory::APPROVAL, [new SigningInvitee('approver', 'a@example.com', 'user-a')]),
-                new SigningIteration(1, SignCategory::EXTERNAL_APPROVAL, [new SigningInvitee('guest', 'guest@example.com', externalUserName: 'Guest', locale: 'de')]),
+                new SigningIteration(0, SignCategory::APPROVAL, [new SigningInvitee('approver', 'a@example.com', 'user-a', displayName: 'Approver')]),
+                new SigningIteration(1, SignCategory::EXTERNAL_APPROVAL, [new SigningInvitee('guest', 'guest@example.com', displayName: 'Guest', locale: 'de')]),
             ],
             attachments: [['fileId' => 'attachment', 'filename' => 'supporting.pdf']],
             description: 'Please sign',
