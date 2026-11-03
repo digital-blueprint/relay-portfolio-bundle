@@ -50,7 +50,7 @@ return static function (ContainerConfigurator $configurator): void {
         ->autoconfigure();
 
     $services->load('Dbp\\Relay\\PortfolioBundle\\Workflow\\', '../../Workflow')
-        ->exclude('../../Workflow/*/Resources')
+        ->exclude(['../../Workflow/*/Resources', '../../Workflow/Signing/State'])
         ->autowire()
         ->autoconfigure();
 
