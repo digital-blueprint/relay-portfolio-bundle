@@ -13,6 +13,7 @@ use Psr\Log\LoggerAwareInterface;
 use Psr\Log\LoggerAwareTrait;
 use Psr\Log\NullLogger;
 use Symfony\Component\DependencyInjection\Attribute\AutoconfigureTag;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\Uid\Uuid;
 
 /**
@@ -56,12 +57,12 @@ class SignService implements SignServiceInterface, LoggerAwareInterface
      *                                           distinct from the returned
      *                                           processInstanceId
      * @param SignJobDescription $jobDescription the parsed job model
-     * @param string             $documentToSign raw bytes of the main PDF
-     * @param string[]           $attachments    raw bytes of each attachment PDF
+     * @param UploadedFile       $documentToSign uploaded main PDF
+     * @param list<UploadedFile> $attachments    uploaded attachment PDFs
      *
      * @return string the new processInstanceId (used as the key for all later calls)
      */
-    public function startProcess(string $processId, SignJobDescription $jobDescription, string $documentToSign, array $attachments): string
+    public function startProcess(string $processId, SignJobDescription $jobDescription, UploadedFile $documentToSign, array $attachments): string
     {
         $processInstanceId = self::INSTANCE_PREFIX.Uuid::v4()->toRfc4122();
 
@@ -69,7 +70,7 @@ class SignService implements SignServiceInterface, LoggerAwareInterface
             'processId' => $processId,
             'processInstanceId' => $processInstanceId,
             'referenceId' => $jobDescription->getMetaData()?->getReferenceId(),
-            'documentBytes' => strlen($documentToSign),
+            'documentBytes' => $documentToSign->getSize(),
             'attachmentCount' => count($attachments),
         ]);
 

@@ -65,19 +65,20 @@ class SignController
         if ($documentToSign === null) {
             return $this->error('The documentToSign part is required.', Response::HTTP_BAD_REQUEST);
         }
-        $documentBytes = file_get_contents($documentToSign->getPathname());
-        if ($documentBytes === false) {
-            return $this->error('The documentToSign part could not be read.', Response::HTTP_INTERNAL_SERVER_ERROR);
+        if (!$documentToSign instanceof UploadedFile || !$documentToSign->isValid()) {
+            return $this->error('The documentToSign part must be one successfully uploaded file.', Response::HTTP_BAD_REQUEST);
         }
 
-        $attachmentBytes = [];
-        foreach ($request->files->all('attachments') as $attachment) {
-            if ($attachment instanceof UploadedFile) {
-                $bytes = file_get_contents($attachment->getPathname());
-                if ($bytes === false) {
-                    return $this->error('An attachment could not be read.', Response::HTTP_INTERNAL_SERVER_ERROR);
-                }
-                $attachmentBytes[] = $bytes;
+        $attachments = $request->files->get('attachments') ?? [];
+        if ($attachments instanceof UploadedFile) {
+            $attachments = [$attachments];
+        }
+        if (!is_array($attachments)) {
+            return $this->error('The attachments part must contain uploaded files.', Response::HTTP_BAD_REQUEST);
+        }
+        foreach ($attachments as $attachment) {
+            if (!$attachment instanceof UploadedFile || !$attachment->isValid()) {
+                return $this->error('Each attachment must be a successfully uploaded file.', Response::HTTP_BAD_REQUEST);
             }
         }
 
@@ -90,7 +91,7 @@ class SignController
         }
 
         try {
-            $processInstanceId = $service->startProcess($processId, $jobDescription, $documentBytes, $attachmentBytes);
+            $processInstanceId = $service->startProcess($processId, $jobDescription, $documentToSign, array_values($attachments));
         } catch (SignException $e) {
             return $this->error($e->getMessage(), $e->getStatusCode());
         }

@@ -4,15 +4,17 @@ declare(strict_types=1);
 
 namespace Dbp\Relay\PortfolioBundle\SignApi;
 
+use Symfony\Component\HttpFoundation\File\UploadedFile;
+
 interface SignServiceInterface
 {
     /**
      * Starts a job for the given process configuration and returns its instance ID.
      * Instance IDs must be unique across all registered implementations.
      *
-     * @param string[] $attachments Raw bytes of each attachment PDF
+     * @param list<UploadedFile> $attachments Uploaded PDFs, including their original filenames
      */
-    public function startProcess(string $processId, SignJobDescription $jobDescription, string $documentToSign, array $attachments): string;
+    public function startProcess(string $processId, SignJobDescription $jobDescription, UploadedFile $documentToSign, array $attachments): string;
 
     /**
      * Returns the process ID for an instance owned by this implementation.

@@ -8,6 +8,7 @@ use Dbp\Relay\PortfolioBundle\SignApi\SignJobDescription;
 use Dbp\Relay\PortfolioBundle\SignApi\SignServiceInterface;
 use Dbp\Relay\PortfolioBundle\SignApi\SignServiceRegistry;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
 
 class SignServiceRegistryTest extends TestCase
 {
@@ -17,7 +18,8 @@ class SignServiceRegistryTest extends TestCase
         $registry->addService('other', new TestSignService());
         $service = new TestSignService();
         $registry->addService('test_process', $service);
-        $instanceId = $service->startProcess('test_process', $this->createStub(SignJobDescription::class), '%PDF', []);
+        $document = new UploadedFile(__DIR__.'/../../src/Workflow/Signing/Resources/signed-document.pdf', 'contract.pdf', 'application/pdf', null, true);
+        $instanceId = $service->startProcess('test_process', $this->createStub(SignJobDescription::class), $document, []);
 
         $this->assertSame($service, $registry->getService('test_process'));
         $this->assertSame('test_process', $registry->resolveProcessId($instanceId));

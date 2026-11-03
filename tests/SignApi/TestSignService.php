@@ -10,6 +10,7 @@ use Dbp\Relay\PortfolioBundle\SignApi\SignJobStateResponse;
 use Dbp\Relay\PortfolioBundle\SignApi\SignServiceInterface;
 use Dbp\Relay\PortfolioBundle\SignApi\SignUser;
 use Symfony\Component\DependencyInjection\Attribute\AutoconfigureTag;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\Uid\Uuid;
 
 #[AutoconfigureTag('dbp.relay.portfolio.sign_service', ['process_id' => 'foobar42'])]
@@ -19,10 +20,10 @@ class TestSignService implements SignServiceInterface
     /** @var array<string, array{processId: string, document: string}> */
     private array $jobs = [];
 
-    public function startProcess(string $processId, SignJobDescription $jobDescription, string $documentToSign, array $attachments): string
+    public function startProcess(string $processId, SignJobDescription $jobDescription, UploadedFile $documentToSign, array $attachments): string
     {
         $instanceId = Uuid::v4()->toRfc4122();
-        $this->jobs[$instanceId] = ['processId' => $processId, 'document' => $documentToSign];
+        $this->jobs[$instanceId] = ['processId' => $processId, 'document' => $documentToSign->getContent()];
 
         return $instanceId;
     }

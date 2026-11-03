@@ -40,7 +40,7 @@ class SignControllerTest extends AbstractTestCase
         $credentials = $this->container->get(SignCredentials::class);
         $this->controller = new SignController($registry, $credentials);
         $service = $registry->getService('test_process');
-        $this->processInstanceId = $service->startProcess('test_process', SignJobDescription::fromArray($this->jobDescription()), '%PDF', []);
+        $this->processInstanceId = $service->startProcess('test_process', SignJobDescription::fromArray($this->jobDescription()), $this->makePdf(), []);
     }
 
     private function jobDescription(): array
@@ -82,12 +82,12 @@ class SignControllerTest extends AbstractTestCase
         ];
     }
 
-    private function makePdf(string $content = "%PDF-1.4\n%mock\n%%EOF"): UploadedFile
+    private function makePdf(string $content = "%PDF-1.4\n%mock\n%%EOF", string $filename = 'contract.pdf'): UploadedFile
     {
         $path = tempnam(sys_get_temp_dir(), 'signapi_').'.pdf';
         file_put_contents($path, $content);
 
-        return new UploadedFile($path, 'contract.pdf', 'application/pdf', null, true);
+        return new UploadedFile($path, $filename, 'application/pdf', null, true);
     }
 
     /**
@@ -118,7 +118,7 @@ class SignControllerTest extends AbstractTestCase
     {
         $registry = new SignServiceRegistry();
         $registry->addService('test_process', $service);
-        $this->processInstanceId = $service->startProcess('test_process', SignJobDescription::fromArray($this->jobDescription()), '%PDF', []);
+        $this->processInstanceId = $service->startProcess('test_process', SignJobDescription::fromArray($this->jobDescription()), $this->makePdf(), []);
 
         return new SignController($registry, $this->container->get(SignCredentials::class));
     }
@@ -156,6 +156,51 @@ class SignControllerTest extends AbstractTestCase
         $response = $this->controller->startProcess('foobar42', $request);
         $this->assertSame(Response::HTTP_CREATED, $response->getStatusCode());
         $this->assertNotEmpty(trim((string) $response->getContent()));
+    }
+
+    public function testStartProcessPassesUploadsWithTheirOriginalNames(): void
+    {
+        $document = $this->makePdf(filename: 'work-contract.pdf');
+        $attachment = $this->makePdf(filename: 'supporting.pdf');
+        $service = $this->createMock(SignServiceInterface::class);
+        $service->expects(self::once())->method('startProcess')->with(
+            'test_process',
+            self::isInstanceOf(SignJobDescription::class),
+            self::identicalTo($document),
+            self::identicalTo([$attachment]),
+        )->willReturn('job-id');
+        $registry = new SignServiceRegistry();
+        $registry->addService('test_process', $service);
+        $controller = new SignController($registry, $this->container->get(SignCredentials::class));
+        $request = new Request(
+            request: ['jobDescription' => json_encode($this->jobDescription())],
+            files: ['documentToSign' => $document, 'attachments' => [$attachment]],
+        );
+        $this->applyAuth($request);
+
+        self::assertSame(201, $controller->startProcess('test_process', $request)->getStatusCode());
+        self::assertSame('work-contract.pdf', $document->getClientOriginalName());
+        self::assertSame('supporting.pdf', $attachment->getClientOriginalName());
+    }
+
+    public function testStartProcessAcceptsUnbracketedSingleAttachment(): void
+    {
+        $request = $this->startProcessRequest();
+        $request->files->set('attachments', $this->makePdf());
+        self::assertSame(201, $this->controller->startProcess('test_process', $request)->getStatusCode());
+    }
+
+    public function testStartProcessRejectsInvalidUploadShapes(): void
+    {
+        foreach ([
+            ['documentToSign' => [$this->makePdf()]],
+            ['documentToSign' => $this->makePdf(), 'attachments' => [[$this->makePdf()]]],
+            ['documentToSign' => new UploadedFile($this->makePdf()->getPathname(), 'partial.pdf', 'application/pdf', UPLOAD_ERR_PARTIAL, true)],
+        ] as $files) {
+            $request = new Request(request: ['jobDescription' => json_encode($this->jobDescription())], files: $files);
+            $this->applyAuth($request);
+            self::assertSame(400, $this->controller->startProcess('test_process', $request)->getStatusCode());
+        }
     }
 
     /**
