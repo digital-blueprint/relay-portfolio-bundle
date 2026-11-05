@@ -8,6 +8,7 @@ use Dbp\Relay\PortfolioBundle\Handler\WorkflowData;
 use Dbp\Relay\PortfolioBundle\Persistence\WorkflowPersistence;
 use Dbp\Relay\PortfolioBundle\Service\WorkflowFileService;
 use Dbp\Relay\PortfolioBundle\Service\WorkflowService;
+use Dbp\Relay\PortfolioBundle\SignApi\SignCategory;
 use Dbp\Relay\PortfolioBundle\SignApi\SignClassifier;
 use Dbp\Relay\PortfolioBundle\SignApi\SignException;
 use Dbp\Relay\PortfolioBundle\SignApi\SignJobDescription;
@@ -15,8 +16,9 @@ use Dbp\Relay\PortfolioBundle\SignApi\SignJobState;
 use Dbp\Relay\PortfolioBundle\SignApi\SignJobStateResponse;
 use Dbp\Relay\PortfolioBundle\SignApi\SignServiceInterface;
 use Dbp\Relay\PortfolioBundle\SignApi\SignUser;
-use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningInvitee;
 use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningIteration;
+use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningIterationKind;
+use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningParticipant;
 use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningWorkflowState;
 use Symfony\Component\DependencyInjection\Attribute\AutoconfigureTag;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
@@ -68,24 +70,27 @@ class SignService implements SignServiceInterface
 
         return new SignJobStateResponse(
             state: $this->getSigningStatus($state),
-            processId: $state->signingProcessId,
+            processId: $state->job->signingProcessId,
             processInstanceId: $workflow->getId(),
             jobMetaData: array_filter([
-                'description' => $state->description,
-                'referenceId' => $state->referenceId,
-                'expirationDate' => $state->expirationDate?->format('Y-m-d\TH:i:s.vP'),
+                'description' => $state->job->description,
+                'referenceId' => $state->job->referenceId,
+                'expirationDate' => $state->job->expirationDate?->format('Y-m-d\TH:i:s.vP'),
             ], static fn (?string $value): bool => $value !== null),
             creationDate: $workflow->getCreatedAt(),
             currentIteration: $state->getCurrentIteration()?->number,
             iterations: array_map(static fn (SigningIteration $iteration): array => [
                 'numberOfSignatures' => 1,
-                'invitees' => array_map(static fn (SigningInvitee $invitee): array => [
+                'invitees' => array_map(static fn (SigningParticipant $participant): array => [
                     'classifier' => SignClassifier::EMAIL->value,
-                    'name' => $invitee->email,
-                ], $iteration->invitees),
-                'category' => $iteration->category->value,
+                    'name' => $participant->email,
+                ], $iteration->participants),
+                'category' => match ($iteration->kind) {
+                    SigningIterationKind::INTERNAL_APPROVAL => SignCategory::APPROVAL->value,
+                    SigningIterationKind::EXTERNAL_SIGNING => SignCategory::EXTERNAL_APPROVAL->value,
+                },
                 'iterationNumber' => $iteration->number,
-            ], $state->iterations),
+            ], $state->job->iterations),
         );
     }
 
@@ -124,8 +129,8 @@ class SignService implements SignServiceInterface
     private function getSigningStatus(SigningWorkflowState $state): SignJobState
     {
         return match (true) {
-            $state->cancelledAt !== null => SignJobState::FINISHED_WF_CANCELLED,
-            $state->expiredAt !== null => SignJobState::FINISHED_TIMEOUT,
+            $state->state->cancelledAt !== null => SignJobState::FINISHED_WF_CANCELLED,
+            $state->state->expiredAt !== null => SignJobState::FINISHED_TIMEOUT,
             $state->isCompleted() => SignJobState::FINISHED_SUCCESS,
             default => SignJobState::ACTIVE,
         };
@@ -142,6 +147,6 @@ class SignService implements SignServiceInterface
         }
         $state = SigningWorkflowState::fromArray($workflow->getInternalState());
 
-        return $state->signingProcessId === self::PROCESS_ID ? $workflow : null;
+        return $state->job->signingProcessId === self::PROCESS_ID ? $workflow : null;
     }
 }

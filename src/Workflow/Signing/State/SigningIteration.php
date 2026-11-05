@@ -4,19 +4,16 @@ declare(strict_types=1);
 
 namespace Dbp\Relay\PortfolioBundle\Workflow\Signing\State;
 
-use Dbp\Relay\PortfolioBundle\SignApi\SignCategory;
-
-final class SigningIteration
+/** One immutable iteration in the job definition, without tasks or results. */
+final readonly class SigningIteration
 {
     /**
-     * @param list<SigningInvitee>                         $invitees
-     * @param array{fileId: string, filename: string}|null $signedDocument
+     * @param list<SigningParticipant> $participants
      */
     public function __construct(
         public int $number,
-        public SignCategory $category,
-        public array $invitees,
-        public ?array $signedDocument = null,
+        public SigningIterationKind $kind,
+        public array $participants,
     ) {
     }
 
@@ -24,9 +21,8 @@ final class SigningIteration
     {
         return new self(
             $data['number'],
-            SignCategory::from($data['category']),
-            array_map(SigningInvitee::fromArray(...), $data['invitees']),
-            $data['signedDocument'] ?? null,
+            SigningIterationKind::from($data['kind']),
+            array_map(SigningParticipant::fromArray(...), $data['participants']),
         );
     }
 
@@ -34,9 +30,8 @@ final class SigningIteration
     {
         return [
             'number' => $this->number,
-            'category' => $this->category->value,
-            'invitees' => array_map(static fn (SigningInvitee $invitee): array => $invitee->toArray(), $this->invitees),
-            'signedDocument' => $this->signedDocument,
+            'kind' => $this->kind->value,
+            'participants' => array_map(static fn (SigningParticipant $participant): array => $participant->toArray(), $this->participants),
         ];
     }
 }

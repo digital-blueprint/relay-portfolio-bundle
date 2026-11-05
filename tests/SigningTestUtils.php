@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Dbp\Relay\PortfolioBundle\Tests;
 
+use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningWorkflowState;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 
 final class SigningTestUtils
@@ -25,5 +26,13 @@ final class SigningTestUtils
     public static function pdf(string $filename = 'contract.pdf'): UploadedFile
     {
         return new UploadedFile(__DIR__.'/../src/Workflow/Signing/Resources/signed-document.pdf', $filename, 'application/pdf', null, true);
+    }
+
+    public static function withJob(SigningWorkflowState $workflow, array $changes): SigningWorkflowState
+    {
+        $data = $workflow->toArray();
+        $data['job'] = array_replace($data['job'], $changes);
+
+        return SigningWorkflowState::fromArray($data);
     }
 }

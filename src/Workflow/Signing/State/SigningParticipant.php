@@ -5,15 +5,13 @@ declare(strict_types=1);
 namespace Dbp\Relay\PortfolioBundle\Workflow\Signing\State;
 
 /**
- * The invitee ID also identifies their task within this iteration.
  * A null userId denotes an external signer, never an unresolved internal identity.
  * Email and displayName are creation-time snapshots; userId is the internal person ID.
  * Locale is an optional external signer preference, not an identity attribute.
  */
-final class SigningInvitee
+final readonly class SigningParticipant
 {
     public function __construct(
-        public string $id,
         public string $email,
         public ?string $userId = null,
         public ?string $displayName = null,
@@ -30,7 +28,6 @@ final class SigningInvitee
     public static function fromArray(array $data): self
     {
         return new self(
-            id: $data['id'],
             email: $data['email'],
             userId: $data['userId'] ?? null,
             displayName: $data['displayName'] ?? null,

@@ -5,46 +5,26 @@ declare(strict_types=1);
 namespace Dbp\Relay\PortfolioBundle\Workflow\Signing\State;
 
 /**
- * Data for one signed PDF and unsigned attachments; lifecycle rules live in the handler.
+ * An immutable job definition and its mutable execution state.
  * Blob files are owned by the workflow UUID, which is not duplicated here.
- * The constituent is the requester, not necessarily one of the signers.
- * Constituent identity fields are snapshots resolved when the workflow is created.
  */
 final class SigningWorkflowState
 {
     public const VERSION = 1;
 
-    /**
-     * @param list<SigningIteration>                        $iterations
-     * @param list<array{fileId: string, filename: string}> $attachments
-     * @param array{fileId: string, filename: string}       $documentToSign
-     */
     public function __construct(
-        public string $signingProcessId,
-        public string $constituentEmail,
-        public string $constituentUserId,
-        public array $documentToSign,
-        public array $iterations,
-        public array $attachments = [],
-        public ?string $description = null,
-        public ?string $referenceId = null,
-        public ?\DateTimeImmutable $expirationDate = null,
-        // Most recent retrieval of the final document via the API.
-        public ?\DateTimeImmutable $lastRetrievedAt = null,
-        public ?string $cancelledByEmail = null,
-        public ?string $cancelledByUserId = null,
-        public ?string $constituentDisplayName = null,
-        public ?\DateTimeImmutable $cancelledAt = null,
-        // Recorded timeout transition, not merely an elapsed expirationDate.
-        public ?\DateTimeImmutable $expiredAt = null,
+        public readonly SigningJob $job,
+        public readonly SigningExecutionState $state,
     ) {
+        $this->validateReferences();
     }
 
     /** @return array{fileId: string, filename: string} */
     public function getCurrentDocument(): array
     {
-        $document = $this->documentToSign;
-        foreach ($this->iterations as $iteration) {
+        $document = $this->job->originalDocument;
+        foreach ($this->job->iterations as $definition) {
+            $iteration = $this->state->getIteration($definition->number);
             if ($iteration->signedDocument === null) {
                 break;
             }
@@ -54,10 +34,11 @@ final class SigningWorkflowState
         return $document;
     }
 
-    public function getCurrentIteration(): ?SigningIteration
+    public function getCurrentIteration(): ?SigningIterationState
     {
         if (!$this->isFinal()) {
-            foreach ($this->iterations as $iteration) {
+            foreach ($this->job->iterations as $definition) {
+                $iteration = $this->state->getIteration($definition->number);
                 if ($iteration->signedDocument === null) {
                     return $iteration;
                 }
@@ -70,10 +51,11 @@ final class SigningWorkflowState
     public function isCompleted(): bool
     {
         // Terminal timestamps take precedence over document results.
-        if ($this->cancelledAt !== null || $this->expiredAt !== null || $this->iterations === []) {
+        if ($this->state->cancelledAt !== null || $this->state->expiredAt !== null || $this->job->iterations === []) {
             return false;
         }
-        foreach ($this->iterations as $iteration) {
+        foreach ($this->job->iterations as $definition) {
+            $iteration = $this->state->getIteration($definition->number);
             if ($iteration->signedDocument === null) {
                 return false;
             }
@@ -84,7 +66,7 @@ final class SigningWorkflowState
 
     public function isFinal(): bool
     {
-        return $this->cancelledAt !== null || $this->expiredAt !== null || $this->isCompleted();
+        return $this->state->cancelledAt !== null || $this->state->expiredAt !== null || $this->isCompleted();
     }
 
     public static function fromArray(array $data): self
@@ -94,21 +76,8 @@ final class SigningWorkflowState
         }
 
         return new self(
-            signingProcessId: $data['signingProcessId'],
-            constituentEmail: $data['constituentEmail'],
-            constituentUserId: $data['constituentUserId'],
-            documentToSign: $data['documentToSign'],
-            iterations: array_map(SigningIteration::fromArray(...), $data['iterations']),
-            attachments: $data['attachments'] ?? [],
-            description: $data['description'] ?? null,
-            referenceId: $data['referenceId'] ?? null,
-            expirationDate: isset($data['expirationDate']) ? new \DateTimeImmutable($data['expirationDate']) : null,
-            lastRetrievedAt: isset($data['lastRetrievedAt']) ? new \DateTimeImmutable($data['lastRetrievedAt']) : null,
-            cancelledByEmail: $data['cancelledByEmail'] ?? null,
-            cancelledByUserId: $data['cancelledByUserId'] ?? null,
-            constituentDisplayName: $data['constituentDisplayName'] ?? null,
-            cancelledAt: isset($data['cancelledAt']) ? new \DateTimeImmutable($data['cancelledAt']) : null,
-            expiredAt: isset($data['expiredAt']) ? new \DateTimeImmutable($data['expiredAt']) : null,
+            job: SigningJob::fromArray($data['job']),
+            state: SigningExecutionState::fromArray($data['state']),
         );
     }
 
@@ -116,21 +85,42 @@ final class SigningWorkflowState
     {
         return [
             'version' => self::VERSION,
-            'signingProcessId' => $this->signingProcessId,
-            'constituentEmail' => $this->constituentEmail,
-            'constituentUserId' => $this->constituentUserId,
-            'constituentDisplayName' => $this->constituentDisplayName,
-            'documentToSign' => $this->documentToSign,
-            'attachments' => $this->attachments,
-            'iterations' => array_map(static fn (SigningIteration $iteration): array => $iteration->toArray(), $this->iterations),
-            'description' => $this->description,
-            'referenceId' => $this->referenceId,
-            'expirationDate' => $this->expirationDate?->format('Y-m-d\TH:i:s.vP'),
-            'lastRetrievedAt' => $this->lastRetrievedAt?->format('Y-m-d\TH:i:s.vP'),
-            'cancelledAt' => $this->cancelledAt?->format('Y-m-d\TH:i:s.vP'),
-            'expiredAt' => $this->expiredAt?->format('Y-m-d\TH:i:s.vP'),
-            'cancelledByEmail' => $this->cancelledByEmail,
-            'cancelledByUserId' => $this->cancelledByUserId,
+            'job' => $this->job->toArray(),
+            'state' => $this->state->toArray(),
         ];
+    }
+
+    private function validateReferences(): void
+    {
+        if (count($this->job->iterations) !== count($this->state->iterations)) {
+            throw new \InvalidArgumentException('Job and execution iterations must correspond one-to-one.');
+        }
+        $stateNumbers = array_map(static fn (SigningIterationState $iteration): int => $iteration->number, $this->state->iterations);
+        if (count(array_unique($stateNumbers)) !== count($stateNumbers)) {
+            throw new \InvalidArgumentException('Execution iteration numbers must be unique.');
+        }
+        $previousNumber = -1;
+        $taskIds = [];
+        foreach ($this->job->iterations as $definition) {
+            if ($definition->number <= $previousNumber || $definition->participants === []) {
+                throw new \InvalidArgumentException('Job iterations must be ordered, unique and contain participants.');
+            }
+            $previousNumber = $definition->number;
+            $iteration = $this->state->getIteration($definition->number);
+            $participantIndices = [];
+            foreach ($iteration->tasks as $task) {
+                if (!isset($definition->participants[$task->participantIndex]) || isset($participantIndices[$task->participantIndex])) {
+                    throw new \InvalidArgumentException('Tasks must reference distinct participants of their iteration.');
+                }
+                if (trim($task->taskId) === '' || isset($taskIds[$task->taskId])) {
+                    throw new \InvalidArgumentException('Task IDs must be non-empty and unique within the workflow.');
+                }
+                $participantIndices[$task->participantIndex] = true;
+                $taskIds[$task->taskId] = true;
+            }
+            if (count($participantIndices) !== count($definition->participants)) {
+                throw new \InvalidArgumentException('Every participant must have a task reference.');
+            }
+        }
     }
 }

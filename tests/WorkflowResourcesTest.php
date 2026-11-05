@@ -6,13 +6,18 @@ namespace Dbp\Relay\PortfolioBundle\Tests;
 
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowData;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowTypeHandlerRegistry;
-use Dbp\Relay\PortfolioBundle\SignApi\SignCategory;
 use Dbp\Relay\PortfolioBundle\SignApi\SignServiceRegistry;
 use Dbp\Relay\PortfolioBundle\Workflow\Dummy\DummyWorkflowTypeHandler;
 use Dbp\Relay\PortfolioBundle\Workflow\Signing\SigningWorkflowTypeHandler;
 use Dbp\Relay\PortfolioBundle\Workflow\Signing\SignService;
-use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningInvitee;
+use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningExecutionState;
+use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningIdentity;
 use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningIteration;
+use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningIterationKind;
+use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningIterationState;
+use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningJob;
+use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningParticipant;
+use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningTask;
 use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningWorkflowState;
 
 class WorkflowResourcesTest extends AbstractTestCase
@@ -36,11 +41,16 @@ class WorkflowResourcesTest extends AbstractTestCase
     public function testSigningTitleAndDescriptionIdentifySigners(): void
     {
         $handler = $this->container->get(SigningWorkflowTypeHandler::class);
-        $external = new SigningInvitee('external-task', 'guest@example.com', displayName: 'Guest Example');
-        $state = new SigningWorkflowState('process49', 'owner@example.com', 'owner-id', ['fileId' => 'file-id', 'filename' => 'contract.pdf'], [
-            new SigningIteration(0, SignCategory::APPROVAL, [new SigningInvitee('internal-task', 'approver@example.com', userId: 'approver-id', displayName: 'Approver')]),
-            new SigningIteration(1, SignCategory::EXTERNAL_APPROVAL, [$external]),
-        ], description: 'Please sign the contract.');
+        $state = new SigningWorkflowState(
+            new SigningJob('process49', new SigningIdentity('owner@example.com', 'owner-id'), ['fileId' => 'file-id', 'filename' => 'contract.pdf'], [
+                new SigningIteration(0, SigningIterationKind::INTERNAL_APPROVAL, [new SigningParticipant('approver@example.com', userId: 'approver-id', displayName: 'Approver')]),
+                new SigningIteration(1, SigningIterationKind::EXTERNAL_SIGNING, [new SigningParticipant('guest@example.com', displayName: 'Guest Example')]),
+            ], description: 'Please sign the contract.'),
+            new SigningExecutionState([
+                new SigningIterationState(0, [new SigningTask(0, 'internal-task')]),
+                new SigningIterationState(1, [new SigningTask(0, 'external-task')]),
+            ]),
+        );
         $workflow = new WorkflowData('wf-signing', $handler->getType(), true, $state->toArray(), new \DateTimeImmutable());
 
         self::assertStringContainsString('Guest Example', $handler->getName($workflow, 'de'));
@@ -54,10 +64,12 @@ class WorkflowResourcesTest extends AbstractTestCase
         self::assertStringContainsString('Guest Example', $description);
         self::assertStringContainsString('guest@example.com', $description);
 
-        $external->displayName = null;
-        $state->iterations[0]->invitees[0]->displayName = null;
-        $state->expirationDate = new \DateTimeImmutable('2026-12-01T12:00:00+00:00');
-        $state->referenceId = '00042';
+        $iterations = $state->job->toArray()['iterations'];
+        foreach ($iterations as &$iteration) {
+            $iteration['participants'][0]['displayName'] = null;
+        }
+        unset($iteration);
+        $state = SigningTestUtils::withJob($state, ['iterations' => $iterations, 'expirationDate' => '2026-12-01T12:00:00+00:00', 'referenceId' => '00042']);
         $workflow = new WorkflowData('wf-signing', $handler->getType(), true, $state->toArray(), new \DateTimeImmutable());
         self::assertStringContainsString('guest@example.com', $handler->getName($workflow, 'de'));
         self::assertStringContainsString('guest@example.com', $handler->getDescription($workflow, 'de'));
