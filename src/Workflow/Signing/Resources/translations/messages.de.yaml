@@ -8,7 +8,9 @@ signing_workflow:
         pending: 'Ausstehend'
         pending_desc: '%signed% / %total% Signatur(en) abgeschlossen'
     action:
-        view_document: 'Dokument ansehen'
+        view_document: 'Arbeitsvertrag ansehen'
+        view_attachment: 'Anhang ansehen: %filename%'
+        file_description: 'Dateiname: %filename%'
         delete: 'Workflow löschen (Test)'
         sign: 'Dokumente signieren'
         check: 'Signaturstatus prüfen'

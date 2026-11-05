@@ -9,6 +9,8 @@ signing_workflow:
         pending_desc: '%signed% / %total% signature(s) completed'
     action:
         view_document: 'View document'
+        view_attachment: 'View attachment: %filename%'
+        file_description: 'Filename: %filename%'
         delete: 'Delete workflow (testing)'
         sign: 'Sign Documents'
         check: 'Check Signing Status'

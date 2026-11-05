@@ -10,16 +10,18 @@ class Action
     public const TYPE_URL = 'url';
 
     /**
-     * @param string      $id    Action identifier, used in POST /portfolio/workflow-actions
-     * @param string      $label Display text for the UI
-     * @param string      $type  One of Action::TYPE_ACTION or Action::TYPE_URL
-     * @param string|null $url   Required when type is TYPE_URL; the external URL to follow
+     * @param string      $id          Action identifier, used in POST /portfolio/workflow-actions
+     * @param string      $label       Display text for the UI
+     * @param string      $type        One of Action::TYPE_ACTION or Action::TYPE_URL
+     * @param string|null $url         Required when type is TYPE_URL; the external URL to follow
+     * @param string|null $description Optional text for button tooltips and URL dialogs
      */
     public function __construct(
         private readonly string $id,
         private readonly string $label,
         private readonly string $type = self::TYPE_ACTION,
         private readonly ?string $url = null,
+        private readonly ?string $description = null,
     ) {
     }
 
@@ -41,5 +43,10 @@ class Action
     public function getUrl(): ?string
     {
         return $this->url;
+    }
+
+    public function getDescription(): ?string
+    {
+        return $this->description;
     }
 }

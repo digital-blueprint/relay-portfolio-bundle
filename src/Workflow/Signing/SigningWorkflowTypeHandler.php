@@ -31,7 +31,9 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
     public const TYPE = 'signing';
     public const ACTION_DELETE = 'delete';
     public const ACTION_VIEW_DOCUMENT = 'view-document';
+    public const ACTION_VIEW_ATTACHMENT_PREFIX = 'view-attachment-';
     public const RENDER_DOCUMENT = 'document';
+    public const RENDER_ATTACHMENT_PREFIX = 'attachment-';
 
     private readonly Translator $translator;
 
@@ -213,10 +215,24 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
             return [];
         }
 
-        return [
+        $state = SigningWorkflowState::fromArray($workflow->getInternalState());
+        $actions = [
             new Action(self::ACTION_DELETE, $this->translator->trans('signing_workflow.action.delete', locale: $lang)),
-            new Action(self::ACTION_VIEW_DOCUMENT, $this->translator->trans('signing_workflow.action.view_document', locale: $lang)),
+            new Action(
+                self::ACTION_VIEW_DOCUMENT,
+                $this->translator->trans('signing_workflow.action.view_document', locale: $lang),
+                description: $this->translator->trans('signing_workflow.action.file_description', ['%filename%' => $state->getCurrentDocument()['filename']], locale: $lang),
+            ),
         ];
+        foreach ($state->attachments as $attachment) {
+            $actions[] = new Action(
+                self::ACTION_VIEW_ATTACHMENT_PREFIX.$attachment['fileId'],
+                $this->translator->trans('signing_workflow.action.view_attachment', ['%filename%' => $attachment['filename']], locale: $lang),
+                description: $this->translator->trans('signing_workflow.action.file_description', ['%filename%' => $attachment['filename']], locale: $lang),
+            );
+        }
+
+        return $actions;
     }
 
     public function handleAction(WorkflowData $workflow, string $action, array $payload, string $lang): WorkflowActionResult
@@ -225,6 +241,15 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
             return new WorkflowActionResult(
                 internalState: $workflow->getInternalState(),
                 url: $this->helper->getSignedRenderUrl($workflow->getId(), self::RENDER_DOCUMENT),
+            );
+        }
+        if (str_starts_with($action, self::ACTION_VIEW_ATTACHMENT_PREFIX)) {
+            $fileId = substr($action, strlen(self::ACTION_VIEW_ATTACHMENT_PREFIX));
+            $this->getAttachment(SigningWorkflowState::fromArray($workflow->getInternalState()), $fileId);
+
+            return new WorkflowActionResult(
+                internalState: $workflow->getInternalState(),
+                url: $this->helper->getSignedRenderUrl($workflow->getId(), self::RENDER_ATTACHMENT_PREFIX.$fileId),
             );
         }
         if ($action === self::ACTION_DELETE) {
@@ -268,13 +293,29 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
 
     public function getRenderResponse(WorkflowData $workflow, string $renderId, string $lang): RenderResult
     {
-        if ($renderId !== self::RENDER_DOCUMENT) {
+        $state = SigningWorkflowState::fromArray($workflow->getInternalState());
+        if ($renderId === self::RENDER_DOCUMENT) {
+            $document = $state->getCurrentDocument();
+        } elseif (str_starts_with($renderId, self::RENDER_ATTACHMENT_PREFIX)) {
+            $document = $this->getAttachment($state, substr($renderId, strlen(self::RENDER_ATTACHMENT_PREFIX)));
+        } else {
             throw new NotFoundHttpException('Unknown signing render ID.');
         }
-        $document = SigningWorkflowState::fromArray($workflow->getInternalState())->getCurrentDocument();
         $stream = $this->helper->getFiles($workflow->getId())->download($document['fileId'])->getFileStream();
 
         return new RenderResult($stream->getContents(), 'application/pdf');
+    }
+
+    /** @return array{fileId: string, filename: string} */
+    private function getAttachment(SigningWorkflowState $state, string $fileId): array
+    {
+        foreach ($state->attachments as $attachment) {
+            if ($attachment['fileId'] === $fileId) {
+                return $attachment;
+            }
+        }
+
+        throw new NotFoundHttpException('Attachment does not belong to the signing workflow.');
     }
 
     public function ping(WorkflowData $workflow): ?WorkflowActionResult

@@ -58,6 +58,18 @@ class WorkflowProviderTest extends AbstractTestCase
         $this->assertSame([], $this->tester->getCollection());
     }
 
+    public function testIncludesOptionalActionDescription(): void
+    {
+        $this->testEntityManager->addWorkflow('wf-1', DummyWorkflowTypeHandler::TYPE);
+        $this->container->get(DummyWorkflowTypeHandler::class)->actionDescription = 'View the current contract PDF.';
+
+        $item = $this->tester->getItem('wf-1');
+        $this->assertSame([
+            ['id' => DummyWorkflowTypeHandler::ACTION_PROCEED, 'label' => 'Proceed', 'type' => Action::TYPE_ACTION, 'description' => 'View the current contract PDF.'],
+            ['id' => DummyWorkflowTypeHandler::ACTION_CANCEL, 'label' => 'Cancel', 'type' => Action::TYPE_ACTION],
+        ], $item->getAvailableActions());
+    }
+
     public function testGetCollectionReturnsList(): void
     {
         $this->testEntityManager->addWorkflow('wf-1', DummyWorkflowTypeHandler::TYPE);

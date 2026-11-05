@@ -23,6 +23,7 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
     public int $cleanupCallCount = 0;
     public bool $cleanupDone = true;
     public bool $canUse = true;
+    public ?string $actionDescription = null;
     /** @var string[] IDs for which canUse() returns false */
     public array $blockedIds = [];
 
@@ -63,7 +64,7 @@ class DummyWorkflowTypeHandler implements WorkflowTypeHandlerInterface
     public function getAvailableActions(WorkflowData $workflow, string $lang): array
     {
         return [
-            new Action(self::ACTION_PROCEED, 'Proceed'),
+            new Action(self::ACTION_PROCEED, 'Proceed', description: $this->actionDescription),
             new Action(self::ACTION_CANCEL, 'Cancel'),
         ];
     }

@@ -161,6 +161,8 @@ class SigningWorkflowTest extends AbstractTestCase
         $workflow = $this->create();
         $state = $workflow->getInternalState();
         $result = $this->workflows->handleAction($workflow->getId(), SigningWorkflowTypeHandler::ACTION_VIEW_DOCUMENT, [], 'en');
+        $handler = $this->container->get(SigningWorkflowTypeHandler::class);
+        self::assertSame('Filename: contract.pdf', $handler->getAvailableActions($this->data($workflow), 'en')[1]->getDescription());
         self::assertTrue($this->container->get(\Symfony\Component\HttpFoundation\UriSigner::class)->check($result->getUrl()));
         self::assertSame($state, $workflow->getInternalState());
         $render = $this->workflows->getRenderResponse($workflow, SigningWorkflowTypeHandler::RENDER_DOCUMENT, 'en');
@@ -173,6 +175,48 @@ class SigningWorkflowTest extends AbstractTestCase
         $state->iterations[0]->signedDocumentFileId = $fileId;
         $workflow->setInternalState($state->toArray());
         self::assertSame($signedPdf, $this->workflows->getRenderResponse($workflow, SigningWorkflowTypeHandler::RENDER_DOCUMENT, 'en')->getHtml());
+    }
+
+    public function testViewAttachmentActionsUseSignedUrlsWithoutChangingSigningState(): void
+    {
+        $response = $this->controller->startProcess('process49', $this->request(files: [
+            'documentToSign' => SigningTestUtils::pdf(),
+            'attachments' => [SigningTestUtils::pdf('supporting.pdf')],
+        ]));
+        self::assertSame(201, $response->getStatusCode());
+        $workflow = $this->workflows->getWorkflow((string) $response->getContent());
+        $state = $workflow->getInternalState();
+        $handler = $this->container->get(SigningWorkflowTypeHandler::class);
+        $action = $handler->getAvailableActions($this->data($workflow), 'en')[2];
+        self::assertSame('View attachment: supporting.pdf', $action->getLabel());
+        self::assertSame('Filename: supporting.pdf', $action->getDescription());
+
+        $result = $this->workflows->handleAction($workflow->getId(), $action->getId(), [], 'en');
+        self::assertTrue($this->container->get(\Symfony\Component\HttpFoundation\UriSigner::class)->check($result->getUrl()));
+        parse_str(parse_url($result->getUrl(), PHP_URL_QUERY), $query);
+        self::assertSame(SigningWorkflowTypeHandler::RENDER_ATTACHMENT_PREFIX.$state['attachments'][0]['fileId'], $query['renderId']);
+        $render = $this->workflows->getRenderResponse($workflow, $query['renderId'], 'en');
+        self::assertSame('application/pdf', $render->getContentType());
+        self::assertSame(SigningTestUtils::pdf()->getContent(), $render->getHtml());
+        self::assertSame($state, $workflow->getInternalState());
+    }
+
+    public function testRejectsViewingDocumentAsAttachment(): void
+    {
+        $workflow = $this->create();
+        $fileId = $workflow->getInternalState()['documentToSignFileId'];
+        $this->expectException(NotFoundHttpException::class);
+        $this->container->get(SigningWorkflowTypeHandler::class)->handleAction(
+            $this->data($workflow), SigningWorkflowTypeHandler::ACTION_VIEW_ATTACHMENT_PREFIX.$fileId, [], 'en',
+        );
+    }
+
+    public function testRejectsRenderingDocumentAsAttachment(): void
+    {
+        $workflow = $this->create();
+        $fileId = $workflow->getInternalState()['documentToSignFileId'];
+        $this->expectException(NotFoundHttpException::class);
+        $this->workflows->getRenderResponse($workflow, SigningWorkflowTypeHandler::RENDER_ATTACHMENT_PREFIX.$fileId, 'en');
     }
 
     #[DataProvider('deletableStates')]

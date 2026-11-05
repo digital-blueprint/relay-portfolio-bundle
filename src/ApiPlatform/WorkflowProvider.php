@@ -106,6 +106,9 @@ class WorkflowProvider extends AbstractDataProvider
                     if ($action->getUrl() !== null) {
                         $data['url'] = $action->getUrl();
                     }
+                    if ($action->getDescription() !== null) {
+                        $data['description'] = $action->getDescription();
+                    }
 
                     return $data;
                 },
