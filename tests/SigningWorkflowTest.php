@@ -162,7 +162,7 @@ class SigningWorkflowTest extends AbstractTestCase
         $state = $workflow->getInternalState();
         $result = $this->workflows->handleAction($workflow->getId(), SigningWorkflowTypeHandler::ACTION_VIEW_DOCUMENT, [], 'en');
         $handler = $this->container->get(SigningWorkflowTypeHandler::class);
-        self::assertSame('Filename: contract.pdf', $handler->getAvailableActions($this->data($workflow), 'en')[1]->getDescription());
+        self::assertSame('Filename: contract.pdf', $handler->getAvailableActions($this->data($workflow), 'en')[0]->getDescription());
         self::assertTrue($this->container->get(\Symfony\Component\HttpFoundation\UriSigner::class)->check($result->getUrl()));
         self::assertSame($state, $workflow->getInternalState());
         $render = $this->workflows->getRenderResponse($workflow, SigningWorkflowTypeHandler::RENDER_DOCUMENT, 'en');
@@ -273,7 +273,7 @@ class SigningWorkflowTest extends AbstractTestCase
         $workflow = $this->workflows->getWorkflow((string) $response->getContent());
         $state = $workflow->getInternalState();
         $handler = $this->container->get(SigningWorkflowTypeHandler::class);
-        $action = $handler->getAvailableActions($this->data($workflow), 'en')[2];
+        $action = $handler->getAvailableActions($this->data($workflow), 'en')[1];
         self::assertSame('View attachment: supporting.pdf', $action->getLabel());
         self::assertSame('Filename: supporting.pdf', $action->getDescription());
 
@@ -523,8 +523,8 @@ class SigningWorkflowTest extends AbstractTestCase
         self::assertSame(SignJobState::ACTIVE, $this->sign->getJobState($workflow->getId(), 'EMAIL')->getState());
         $handler = $this->container->get(SigningWorkflowTypeHandler::class);
         $actions = $handler->getAvailableActions($this->data($workflow), 'en');
-        self::assertSame([SigningWorkflowTypeHandler::ACTION_DELETE, SigningWorkflowTypeHandler::ACTION_VIEW_DOCUMENT, SigningWorkflowTypeHandler::ACTION_SAP_CANCEL, SigningWorkflowTypeHandler::ACTION_FIRST_SIGNATURE, SigningWorkflowTypeHandler::ACTION_EXPIRE], array_map(static fn ($action): string => $action->getId(), $actions));
-        self::assertSame('SAP cancel', $actions[2]->getLabel());
+        self::assertSame([SigningWorkflowTypeHandler::ACTION_VIEW_DOCUMENT, SigningWorkflowTypeHandler::ACTION_SAP_CANCEL, SigningWorkflowTypeHandler::ACTION_FIRST_SIGNATURE, SigningWorkflowTypeHandler::ACTION_EXPIRE, SigningWorkflowTypeHandler::ACTION_DELETE], array_map(static fn ($action): string => $action->getId(), $actions));
+        self::assertSame('SAP cancel (Debug)', $actions[1]->getLabel());
         self::assertStringContainsString('0 / 2', $handler->getStatusDisplay($this->data($workflow), 'en')->getDescription());
         $this->workflows->handleAction($workflow->getId(), SigningWorkflowTypeHandler::ACTION_SAP_CANCEL, [], 'en');
         self::assertFalse($workflow->isActive());

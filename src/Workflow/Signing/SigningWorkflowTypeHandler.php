@@ -241,7 +241,6 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
 
         $state = SigningWorkflowState::fromArray($workflow->getInternalState());
         $actions = [
-            new Action(self::ACTION_DELETE, $this->translator->trans('signing_workflow.action.delete', locale: $lang)),
             new Action(
                 self::ACTION_VIEW_DOCUMENT,
                 $this->translator->trans('signing_workflow.action.view_document', locale: $lang),
@@ -283,6 +282,7 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
         if ($state->status === SignJobState::FINISHED_SUCCESS && $state->retrievedAt === null) {
             $actions[] = new Action(self::ACTION_SAP_RETRIEVE, $this->translator->trans('signing_workflow.action.sap_retrieve', locale: $lang));
         }
+        $actions[] = new Action(self::ACTION_DELETE, $this->translator->trans('signing_workflow.action.delete', locale: $lang));
 
         return $actions;
     }
