@@ -30,6 +30,7 @@ final class SigningWorkflowState
         public ?string $referenceId = null,
         public ?\DateTimeImmutable $expirationDate = null,
         public SignJobState $status = SignJobState::ACTIVE,
+        // Most recent retrieval of the final document via the API.
         public ?\DateTimeImmutable $retrievedAt = null,
         public ?string $cancelledByEmail = null,
         public ?string $cancelledByUserId = null,

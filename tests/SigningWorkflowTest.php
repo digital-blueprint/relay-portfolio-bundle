@@ -345,6 +345,7 @@ class SigningWorkflowTest extends AbstractTestCase
         self::assertSame(SignJobState::ACTIVE, $state->status);
         self::assertTrue($workflow->isActive());
         self::assertSame(404, $this->controller->getDocument($workflow->getId(), $this->request())->getStatusCode());
+        self::assertNull($workflow->getInternalState()['retrievedAt']);
         self::assertNull($this->workflows->getTask($firstTask));
         self::assertNotNull($this->workflows->getTask($secondTask));
         self::assertNotContains(SigningWorkflowTypeHandler::ACTION_FIRST_SIGNATURE, $actionIds());
@@ -361,10 +362,24 @@ class SigningWorkflowTest extends AbstractTestCase
         self::assertFalse($workflow->isActive());
         self::assertNotNull($workflow->getClosedAt());
         self::assertSame(SignJobState::FINISHED_SUCCESS, $this->sign->getJobState($workflow->getId(), 'EMAIL')->getState());
+        self::assertSame('Waiting for SAP to retrieve', $handler->getStatusDisplay($this->data($workflow), 'en')->getLabel());
+        self::assertStringContainsString('Workflow ID: '.$workflow->getId(), $handler->getStatusDisplay($this->data($workflow), 'en')->getDescription());
+        $this->workflows->getRenderResponse($workflow, SigningWorkflowTypeHandler::RENDER_DOCUMENT, 'en');
+        self::assertNull($workflow->getInternalState()['retrievedAt']);
         $response = $this->controller->getDocument($workflow->getId(), $this->request());
         self::assertSame(200, $response->getStatusCode());
         self::assertSame('application/pdf', $response->headers->get('Content-Type'));
         self::assertSame($files->download($workflow->getId(), $state->iterations[1]->signedDocumentFileId)->getFileStream()->getContents(), $response->getContent());
+        $id = $workflow->getId();
+        $this->container->get('doctrine.orm.dbp_relay_portfolio_bundle_entity_manager')->clear();
+        $workflow = $this->workflows->getWorkflow($id);
+        $retrievedAt = $workflow->getInternalState()['retrievedAt'];
+        self::assertNotNull($retrievedAt);
+        self::assertSame('Transferred to SAP', $handler->getStatusDisplay($this->data($workflow), 'en')->getLabel());
+        self::assertSame('An SAP übertragen', $handler->getStatusDisplay($this->data($workflow), 'de')->getLabel());
+        self::assertSame(200, $this->controller->getDocument($id, $this->request())->getStatusCode());
+        self::assertGreaterThan(new \DateTimeImmutable($retrievedAt), new \DateTimeImmutable($workflow->getInternalState()['retrievedAt']));
+        self::assertFalse($workflow->isActive());
     }
 
     #[DataProvider('invalidJobs')]

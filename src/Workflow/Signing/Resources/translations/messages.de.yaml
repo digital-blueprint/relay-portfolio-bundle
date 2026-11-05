@@ -6,8 +6,10 @@ signing_workflow:
         cancelled: 'In SAP abgebrochen'
         cancelled_desc: 'Der Signaturworkflow wurde in SAP abgebrochen.'
         cancelled_by_desc: 'Der Signaturworkflow wurde in SAP abgebrochen (von %email%).'
-        completed: 'Abgeschlossen'
-        completed_desc: 'Alle %total% Signatur(en) wurden abgeschlossen.'
+        waiting_for_sap: 'Warten auf Abruf durch SAP'
+        waiting_for_sap_desc: 'Alle %total% Signatur(en) wurden abgeschlossen. Das finale Dokument wartet auf den Abruf durch SAP. Workflow-ID: %workflowId%.'
+        transferred: 'An SAP übertragen'
+        transferred_desc: 'Das finale Dokument wurde zuletzt am %date% über die SAP-API abgerufen.'
         pending: 'Ausstehend'
         pending_desc: '%signed% / %total% Signatur(en) abgeschlossen'
     action:

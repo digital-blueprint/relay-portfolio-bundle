@@ -191,11 +191,18 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
         }
         $total = count($state->iterations);
         $signed = count(array_filter($state->iterations, static fn (SigningIteration $iteration): bool => $iteration->signedDocumentFileId !== null));
-        $key = $state->status === SignJobState::FINISHED_SUCCESS ? 'completed' : 'pending';
+        $key = $state->status === SignJobState::FINISHED_SUCCESS
+            ? ($state->retrievedAt !== null ? 'transferred' : 'waiting_for_sap')
+            : 'pending';
 
         return new StatusDisplay(
             $state->status->isFinal() && $state->status !== SignJobState::FINISHED_SUCCESS ? $state->status->value : $this->translator->trans('signing_workflow.state.'.$key, locale: $lang),
-            $this->translator->trans('signing_workflow.state.'.$key.'_desc', ['%signed%' => $signed, '%total%' => $total], locale: $lang),
+            $this->translator->trans('signing_workflow.state.'.$key.'_desc', [
+                '%signed%' => $signed,
+                '%total%' => $total,
+                '%date%' => $state->retrievedAt?->format('Y-m-d H:i:s T') ?? '',
+                '%workflowId%' => $workflow->getId(),
+            ], locale: $lang),
         );
     }
 
