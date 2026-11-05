@@ -398,6 +398,7 @@ class SigningWorkflowTest extends AbstractTestCase
         self::assertNotNull($retrievedAt);
         self::assertSame('Transferred to SAP', $handler->getStatusDisplay($this->data($workflow), 'en')->getLabel());
         self::assertSame('An SAP übertragen', $handler->getStatusDisplay($this->data($workflow), 'de')->getLabel());
+        self::assertStringContainsString('Workflow ID: '.$id, $handler->getStatusDisplay($this->data($workflow), 'en')->getDescription());
         self::assertSame(200, $this->controller->getDocument($id, $this->request())->getStatusCode());
         self::assertGreaterThan(new \DateTimeImmutable($retrievedAt), new \DateTimeImmutable($workflow->getInternalState()['retrievedAt']));
         self::assertSame($closedAt, $workflow->getClosedAt());
