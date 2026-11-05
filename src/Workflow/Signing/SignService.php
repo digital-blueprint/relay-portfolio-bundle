@@ -6,6 +6,7 @@ namespace Dbp\Relay\PortfolioBundle\Workflow\Signing;
 
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowData;
 use Dbp\Relay\PortfolioBundle\Persistence\WorkflowPersistence;
+use Dbp\Relay\PortfolioBundle\Service\WorkflowFileService;
 use Dbp\Relay\PortfolioBundle\Service\WorkflowService;
 use Dbp\Relay\PortfolioBundle\SignApi\SignClassifier;
 use Dbp\Relay\PortfolioBundle\SignApi\SignException;
@@ -28,6 +29,7 @@ class SignService implements SignServiceInterface
     public function __construct(
         private readonly WorkflowService $workflows,
         private readonly SigningWorkflowTypeHandler $handler,
+        private readonly WorkflowFileService $files,
     ) {
     }
 
@@ -80,12 +82,17 @@ class SignService implements SignServiceInterface
 
     public function getDocument(string $processInstanceId): ?string
     {
-        if ($this->findWorkflow($processInstanceId) === null) {
+        $workflow = $this->findWorkflow($processInstanceId);
+        if ($workflow === null) {
             throw SignException::jobNotFound($processInstanceId);
         }
+        $state = SigningWorkflowState::fromArray($workflow->getInternalState());
+        if ($state->status !== SignJobState::FINISHED_SUCCESS) {
+            return null;
+        }
+        $document = $state->getCurrentDocument();
 
-        // Result retrieval will be added with the signing callback and completion flow.
-        return null;
+        return $this->files->download($processInstanceId, $document['fileId'])->getFileStream()->getContents();
     }
 
     private function findWorkflow(string $id): ?WorkflowPersistence

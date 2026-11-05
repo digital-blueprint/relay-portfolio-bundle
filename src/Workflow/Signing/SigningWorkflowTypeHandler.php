@@ -305,7 +305,10 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
             $state->status = SignJobState::FINISHED_SUCCESS;
         }
 
-        return new WorkflowActionResult(internalState: $state->toArray());
+        return new WorkflowActionResult(
+            internalState: $state->toArray(),
+            close: $state->status === SignJobState::FINISHED_SUCCESS ? true : null,
+        );
     }
 
     public function cancel(WorkflowData $workflow, string $email): WorkflowActionResult

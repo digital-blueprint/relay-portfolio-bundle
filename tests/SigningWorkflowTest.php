@@ -139,7 +139,7 @@ class SigningWorkflowTest extends AbstractTestCase
         $em = $this->container->get('doctrine.orm.dbp_relay_portfolio_bundle_entity_manager');
         $em->clear();
         self::assertSame('process49', $this->sign->resolveProcessId($id));
-        self::assertSame(SignJobState::ACTIVE, (new SignService($this->workflows, $this->container->get(SigningWorkflowTypeHandler::class)))->getJobState($id, 'EMAIL')->getState());
+        self::assertSame(SignJobState::ACTIVE, (new SignService($this->workflows, $this->container->get(SigningWorkflowTypeHandler::class), $this->container->get(WorkflowFileService::class)))->getJobState($id, 'EMAIL')->getState());
         $workflow = $this->workflows->getWorkflow($id);
         $state = SigningWorkflowState::fromArray($workflow->getInternalState());
         $state->status = SignJobState::FINISHED_FAILED;
@@ -328,7 +328,7 @@ class SigningWorkflowTest extends AbstractTestCase
         self::assertFalse($this->workflows->canUse($workflow));
     }
 
-    public function testTasksFollowTheCurrentIterationWithoutClosingOnSuccess(): void
+    public function testSignatureActionsAdvanceTasksAndCloseOnSuccess(): void
     {
         $workflow = $this->create();
         $state = SigningWorkflowState::fromArray($workflow->getInternalState());
@@ -343,6 +343,8 @@ class SigningWorkflowTest extends AbstractTestCase
         $firstFileId = $state->iterations[0]->signedDocumentFileId;
         self::assertNotSame($state->documentToSignFileId, $firstFileId);
         self::assertSame(SignJobState::ACTIVE, $state->status);
+        self::assertTrue($workflow->isActive());
+        self::assertSame(404, $this->controller->getDocument($workflow->getId(), $this->request())->getStatusCode());
         self::assertNull($this->workflows->getTask($firstTask));
         self::assertNotNull($this->workflows->getTask($secondTask));
         self::assertNotContains(SigningWorkflowTypeHandler::ACTION_FIRST_SIGNATURE, $actionIds());
@@ -356,8 +358,13 @@ class SigningWorkflowTest extends AbstractTestCase
         }
         self::assertNull($this->workflows->getTask($secondTask));
         self::assertNotContains(SigningWorkflowTypeHandler::ACTION_SECOND_SIGNATURE, $actionIds());
-        self::assertTrue($workflow->isActive());
+        self::assertFalse($workflow->isActive());
+        self::assertNotNull($workflow->getClosedAt());
         self::assertSame(SignJobState::FINISHED_SUCCESS, $this->sign->getJobState($workflow->getId(), 'EMAIL')->getState());
+        $response = $this->controller->getDocument($workflow->getId(), $this->request());
+        self::assertSame(200, $response->getStatusCode());
+        self::assertSame('application/pdf', $response->headers->get('Content-Type'));
+        self::assertSame($files->download($workflow->getId(), $state->iterations[1]->signedDocumentFileId)->getFileStream()->getContents(), $response->getContent());
     }
 
     #[DataProvider('invalidJobs')]
