@@ -7,13 +7,10 @@ namespace Dbp\Relay\PortfolioBundle\Workflow\Signing\State;
 /** One immutable iteration in the job definition, without tasks or results. */
 final readonly class SigningIteration
 {
-    /**
-     * @param list<SigningParticipant> $participants
-     */
     public function __construct(
         public int $number,
         public SigningIterationKind $kind,
-        public array $participants,
+        public SigningParticipant $participant,
     ) {
     }
 
@@ -22,7 +19,7 @@ final readonly class SigningIteration
         return new self(
             $data['number'],
             SigningIterationKind::from($data['kind']),
-            array_map(SigningParticipant::fromArray(...), $data['participants']),
+            SigningParticipant::fromArray($data['participant']),
         );
     }
 
@@ -31,7 +28,7 @@ final readonly class SigningIteration
         return [
             'number' => $this->number,
             'kind' => $this->kind->value,
-            'participants' => array_map(static fn (SigningParticipant $participant): array => $participant->toArray(), $this->participants),
+            'participant' => $this->participant->toArray(),
         ];
     }
 }

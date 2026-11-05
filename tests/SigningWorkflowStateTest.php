@@ -11,7 +11,6 @@ use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningIterationKind;
 use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningIterationState;
 use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningJob;
 use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningParticipant;
-use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningTask;
 use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningWorkflowState;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -26,8 +25,8 @@ class SigningWorkflowStateTest extends TestCase
                 constituent: new SigningIdentity('owner@example.com', 'user-owner', 'Owner'),
                 originalDocument: ['fileId' => 'original', 'filename' => 'contract.pdf'],
                 iterations: [
-                    new SigningIteration(0, SigningIterationKind::INTERNAL_APPROVAL, [new SigningParticipant('a@example.com', 'user-a', displayName: 'Approver')]),
-                    new SigningIteration(1, SigningIterationKind::EXTERNAL_SIGNING, [new SigningParticipant('guest@example.com', displayName: 'Guest', locale: 'de')]),
+                    new SigningIteration(0, SigningIterationKind::INTERNAL_APPROVAL, new SigningParticipant('a@example.com', 'user-a', displayName: 'Approver')),
+                    new SigningIteration(1, SigningIterationKind::EXTERNAL_SIGNING, new SigningParticipant('guest@example.com', displayName: 'Guest', locale: 'de')),
                 ],
                 attachments: [['fileId' => 'attachment', 'filename' => 'supporting.pdf']],
                 description: 'Please sign',
@@ -35,8 +34,8 @@ class SigningWorkflowStateTest extends TestCase
                 expirationDate: new \DateTimeImmutable('2026-12-01T22:59:00.123+0100'),
             ),
             state: new SigningExecutionState([
-                new SigningIterationState(0, [new SigningTask(0, 'approver')]),
-                new SigningIterationState(1, [new SigningTask(0, 'guest')]),
+                new SigningIterationState(0, 'approver'),
+                new SigningIterationState(1, 'guest'),
             ]),
         );
     }
@@ -63,12 +62,15 @@ class SigningWorkflowStateTest extends TestCase
         self::assertArrayNotHasKey('retrievedAt', $data);
         self::assertSame($state->state->iterations[0]->signedDocument, $data['state']['iterations'][0]['signedDocument']);
         self::assertSame('internal_approval', $data['job']['iterations'][0]['kind']);
-        self::assertSame(['participantIndex' => 0, 'taskId' => 'approver'], $data['state']['iterations'][0]['tasks'][0]);
+        self::assertSame('approver', $data['state']['iterations'][0]['taskId']);
+        self::assertArrayNotHasKey('tasks', $data['state']['iterations'][0]);
+        self::assertArrayNotHasKey('participantIndex', $data['state']['iterations'][0]);
         self::assertArrayNotHasKey('signedDocument', $data['job']['iterations'][0]);
         self::assertArrayNotHasKey('tasks', $data['job']['iterations'][0]);
-        self::assertArrayNotHasKey('taskId', $data['job']['iterations'][0]['participants'][0]);
+        self::assertArrayNotHasKey('taskId', $data['job']['iterations'][0]['participant']);
+        self::assertArrayNotHasKey('participants', $data['job']['iterations'][0]);
         self::assertArrayNotHasKey('kind', $data['state']['iterations'][0]);
-        self::assertArrayNotHasKey('participants', $data['state']['iterations'][0]);
+        self::assertArrayNotHasKey('participant', $data['state']['iterations'][0]);
         self::assertEquals($state, SigningWorkflowState::fromArray($data));
         self::assertTrue(SigningWorkflowState::fromArray($data)->isCompleted());
 
@@ -110,8 +112,8 @@ class SigningWorkflowStateTest extends TestCase
         $job = $state->job->toArray();
         self::assertSame(['fileId' => 'original', 'filename' => 'contract.pdf'], $state->getCurrentDocument());
         self::assertSame($state->state->iterations[0], $state->getCurrentIteration());
-        self::assertFalse($state->job->iterations[0]->participants[0]->isExternal());
-        self::assertTrue($state->job->iterations[1]->participants[0]->isExternal());
+        self::assertFalse($state->job->iterations[0]->participant->isExternal());
+        self::assertTrue($state->job->iterations[1]->participant->isExternal());
         self::assertFalse($state->isCompleted());
         self::assertFalse($state->isFinal());
 
@@ -156,15 +158,37 @@ class SigningWorkflowStateTest extends TestCase
         self::assertNull($state->state->expiredAt);
     }
 
-    public function testEmptyIterationsAreNotCompleted(): void
+    #[DataProvider('unsupportedStepCounts')]
+    public function testUnsupportedStepCountsAreRejected(int $count): void
     {
         $state = $this->createState();
         $data = $state->toArray();
-        $data['job']['iterations'] = [];
-        $data['state']['iterations'] = [];
-        $state = SigningWorkflowState::fromArray($data);
-        self::assertFalse($state->isCompleted());
-        self::assertFalse($state->isFinal());
+        if ($count > 2) {
+            $data['job']['iterations'][] = $data['job']['iterations'][1];
+            $data['state']['iterations'][] = $data['state']['iterations'][1];
+        } else {
+            $data['job']['iterations'] = array_slice($data['job']['iterations'], 0, $count);
+            $data['state']['iterations'] = array_slice($data['state']['iterations'], 0, $count);
+        }
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Signing requires exactly two job steps and their execution records.');
+        SigningWorkflowState::fromArray($data);
+    }
+
+    public static function unsupportedStepCounts(): iterable
+    {
+        yield 'no steps' => [0];
+        yield 'one step' => [1];
+        yield 'three steps' => [3];
+    }
+
+    public function testSparseStepDefinitionsAreRejected(): void
+    {
+        $data = $this->createState()->toArray();
+        $data['job']['iterations'][2] = $data['job']['iterations'][1];
+        unset($data['job']['iterations'][1]);
+        $this->expectException(\InvalidArgumentException::class);
+        SigningWorkflowState::fromArray($data);
     }
 
     public function testLastDocumentAloneDoesNotMeanCompleted(): void
@@ -212,16 +236,12 @@ class SigningWorkflowStateTest extends TestCase
         yield 'duplicate execution number' => [['state', 'iterations', 1, 'number'], 0];
         yield 'unknown execution number' => [['state', 'iterations', 1, 'number'], 2];
         yield 'duplicate definition number' => [['job', 'iterations', 1, 'number'], 0];
-        yield 'missing participant' => [['job', 'iterations', 0, 'participants'], []];
-        yield 'unknown participant index' => [['state', 'iterations', 0, 'tasks', 0, 'participantIndex'], 1];
-        yield 'negative participant index' => [['state', 'iterations', 0, 'tasks', 0, 'participantIndex'], -1];
-        yield 'missing task' => [['state', 'iterations', 0, 'tasks'], []];
-        yield 'duplicate task ID' => [['state', 'iterations', 1, 'tasks', 0, 'taskId'], 'approver'];
-        yield 'empty task ID' => [['state', 'iterations', 0, 'tasks', 0, 'taskId'], ' '];
-        yield 'duplicate participant reference' => [['state', 'iterations', 0, 'tasks'], [
-            ['participantIndex' => 0, 'taskId' => 'approver'],
-            ['participantIndex' => 0, 'taskId' => 'another-task'],
-        ]];
+        yield 'wrong first step kind' => [['job', 'iterations', 0, 'kind'], 'external_signing'];
+        yield 'wrong second step kind' => [['job', 'iterations', 1, 'kind'], 'internal_approval'];
+        yield 'external first participant' => [['job', 'iterations', 0, 'participant', 'userId'], null];
+        yield 'internal second participant' => [['job', 'iterations', 1, 'participant', 'userId'], 'user-guest'];
+        yield 'duplicate task ID' => [['state', 'iterations', 1, 'taskId'], 'approver'];
+        yield 'empty task ID' => [['state', 'iterations', 0, 'taskId'], ' '];
     }
 
     public function testJobDefinitionIsImmutable(): void

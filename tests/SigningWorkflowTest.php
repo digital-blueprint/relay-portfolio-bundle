@@ -108,10 +108,10 @@ class SigningWorkflowTest extends AbstractTestCase
         self::assertSame('owner-id', $state->job->constituent->userId);
         self::assertSame('Owner Example', $state->job->constituent->displayName);
         self::assertNull($state->state->cancelledBy);
-        self::assertSame('approver-id', $state->job->iterations[0]->participants[0]->userId);
-        self::assertSame('Approver Example', $state->job->iterations[0]->participants[0]->displayName);
-        self::assertNull($state->job->iterations[1]->participants[0]->userId);
-        self::assertSame('Guest', $state->job->iterations[1]->participants[0]->displayName);
+        self::assertSame('approver-id', $state->job->iterations[0]->participant->userId);
+        self::assertSame('Approver Example', $state->job->iterations[0]->participant->displayName);
+        self::assertNull($state->job->iterations[1]->participant->userId);
+        self::assertSame('Guest', $state->job->iterations[1]->participant->displayName);
         self::assertSame('CASE-123', $state->job->referenceId);
         self::assertSame('2100', $state->job->expirationDate->format('Y'));
         $jobState = json_decode($this->controller->getJobState($id, 'EMAIL', $this->request())->getContent(), true);
@@ -129,11 +129,11 @@ class SigningWorkflowTest extends AbstractTestCase
             self::assertSame('application/pdf', $file->getMimeType());
             self::assertSame(file_get_contents(SigningTestUtils::pdf()->getPathname()), $files->download($id, $fileId)->getFileStream()->getContents());
         }
-        $task = $this->workflows->getTask($state->state->iterations[0]->tasks[0]->taskId);
+        $task = $this->workflows->getTask($state->state->iterations[0]->taskId);
         self::assertNotNull($task);
-        self::assertNull($this->workflows->getTask($state->state->iterations[1]->tasks[0]->taskId));
-        self::assertTrue(Uuid::isValid($state->state->iterations[1]->tasks[0]->taskId));
-        self::assertNotSame($state->state->iterations[0]->tasks[0]->taskId, $state->state->iterations[1]->tasks[0]->taskId);
+        self::assertNull($this->workflows->getTask($state->state->iterations[1]->taskId));
+        self::assertTrue(Uuid::isValid($state->state->iterations[1]->taskId));
+        self::assertNotSame($state->state->iterations[0]->taskId, $state->state->iterations[1]->taskId);
         $taskData = $this->workflows->getTaskResponse($task, 'en');
         self::assertCount(1, $taskData['documents']);
         self::assertCount(1, $taskData['attachments']);
@@ -220,7 +220,7 @@ class SigningWorkflowTest extends AbstractTestCase
         $workflow = $this->create();
         $id = $workflow->getId();
         $state = SigningWorkflowState::fromArray($workflow->getInternalState());
-        $taskId = $state->state->iterations[0]->tasks[0]->taskId;
+        $taskId = $state->state->iterations[0]->taskId;
         $response = $this->controller->cancelJob($id, $this->cancelRequest());
         self::assertSame(200, $response->getStatusCode(), (string) $response->getContent());
         self::assertSame(['state' => 'FINISHED_WF_CANCELLED'], json_decode($response->getContent(), true));
@@ -348,7 +348,7 @@ class SigningWorkflowTest extends AbstractTestCase
         ]));
         self::assertSame(201, $response->getStatusCode());
         $workflow = $this->workflows->getWorkflow((string) $response->getContent());
-        $taskId = SigningWorkflowState::fromArray($workflow->getInternalState())->state->iterations[0]->tasks[0]->taskId;
+        $taskId = SigningWorkflowState::fromArray($workflow->getInternalState())->state->iterations[0]->taskId;
         if ($closed) {
             $workflow->close();
         }
@@ -398,8 +398,8 @@ class SigningWorkflowTest extends AbstractTestCase
     {
         $workflow = $this->create();
         $state = SigningWorkflowState::fromArray($workflow->getInternalState());
-        $firstTask = $state->state->iterations[0]->tasks[0]->taskId;
-        $secondTask = $state->state->iterations[1]->tasks[0]->taskId;
+        $firstTask = $state->state->iterations[0]->taskId;
+        $secondTask = $state->state->iterations[1]->taskId;
         $handler = $this->container->get(SigningWorkflowTypeHandler::class);
         $actionIds = fn (): array => array_map(static fn ($action): string => $action->getId(), $handler->getAvailableActions($this->data($workflow), 'en'));
         self::assertContains(SigningWorkflowTypeHandler::ACTION_FIRST_SIGNATURE, $actionIds());

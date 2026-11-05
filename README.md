@@ -14,14 +14,15 @@ The snapshot has two parts:
   references and signed documents, cancellation, expiration, and retrieval.
 
 Iteration definitions in `job.iterations` contain `number`, `kind`, and
-`participants`. The internal kinds `internal_approval` and `external_signing` are
-translated into API categories only by `SignService`.
+one `participant`. Exactly two ordered steps are supported: step 0 is an
+`internal_approval` by an internal person; step 1 is `external_signing` by an
+external person. These internal kinds are translated into API categories only
+by `SignService`. Multiple participants within a step are not supported.
 
-Each `state.iterations` record has the matching `number`, its `tasks`, and its
-`signedDocument`. Each task links a generated `taskId` to the zero-based
-`participantIndex` in that iteration's immutable participant list. Iteration
-numbers and task IDs must be unique, and every participant has exactly one task
-reference. Results are matched by iteration number, not by array position.
+Each `state.iterations` record has the matching `number`, one generated `taskId`,
+and its participant's `signedDocument`. Task IDs must be non-empty and unique
+within the workflow. Results are matched by iteration number, not by array
+position. Both steps must complete before signing is complete.
 
 Documents consistently use `{fileId, filename}` references:
 

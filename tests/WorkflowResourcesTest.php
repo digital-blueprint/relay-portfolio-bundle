@@ -17,7 +17,6 @@ use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningIterationKind;
 use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningIterationState;
 use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningJob;
 use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningParticipant;
-use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningTask;
 use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningWorkflowState;
 
 class WorkflowResourcesTest extends AbstractTestCase
@@ -43,12 +42,12 @@ class WorkflowResourcesTest extends AbstractTestCase
         $handler = $this->container->get(SigningWorkflowTypeHandler::class);
         $state = new SigningWorkflowState(
             new SigningJob('process49', new SigningIdentity('owner@example.com', 'owner-id'), ['fileId' => 'file-id', 'filename' => 'contract.pdf'], [
-                new SigningIteration(0, SigningIterationKind::INTERNAL_APPROVAL, [new SigningParticipant('approver@example.com', userId: 'approver-id', displayName: 'Approver')]),
-                new SigningIteration(1, SigningIterationKind::EXTERNAL_SIGNING, [new SigningParticipant('guest@example.com', displayName: 'Guest Example')]),
+                new SigningIteration(0, SigningIterationKind::INTERNAL_APPROVAL, new SigningParticipant('approver@example.com', userId: 'approver-id', displayName: 'Approver')),
+                new SigningIteration(1, SigningIterationKind::EXTERNAL_SIGNING, new SigningParticipant('guest@example.com', displayName: 'Guest Example')),
             ], description: 'Please sign the contract.'),
             new SigningExecutionState([
-                new SigningIterationState(0, [new SigningTask(0, 'internal-task')]),
-                new SigningIterationState(1, [new SigningTask(0, 'external-task')]),
+                new SigningIterationState(0, 'internal-task'),
+                new SigningIterationState(1, 'external-task'),
             ]),
         );
         $workflow = new WorkflowData('wf-signing', $handler->getType(), true, $state->toArray(), new \DateTimeImmutable());
@@ -66,7 +65,7 @@ class WorkflowResourcesTest extends AbstractTestCase
 
         $iterations = $state->job->toArray()['iterations'];
         foreach ($iterations as &$iteration) {
-            $iteration['participants'][0]['displayName'] = null;
+            $iteration['participant']['displayName'] = null;
         }
         unset($iteration);
         $state = SigningTestUtils::withJob($state, ['iterations' => $iterations, 'expirationDate' => '2026-12-01T12:00:00+00:00', 'referenceId' => '00042']);

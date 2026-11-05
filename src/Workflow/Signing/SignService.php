@@ -18,7 +18,6 @@ use Dbp\Relay\PortfolioBundle\SignApi\SignServiceInterface;
 use Dbp\Relay\PortfolioBundle\SignApi\SignUser;
 use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningIteration;
 use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningIterationKind;
-use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningParticipant;
 use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningWorkflowState;
 use Symfony\Component\DependencyInjection\Attribute\AutoconfigureTag;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
@@ -81,10 +80,10 @@ class SignService implements SignServiceInterface
             currentIteration: $state->getCurrentIteration()?->number,
             iterations: array_map(static fn (SigningIteration $iteration): array => [
                 'numberOfSignatures' => 1,
-                'invitees' => array_map(static fn (SigningParticipant $participant): array => [
+                'invitees' => [[
                     'classifier' => SignClassifier::EMAIL->value,
-                    'name' => $participant->email,
-                ], $iteration->participants),
+                    'name' => $iteration->participant->email,
+                ]],
                 'category' => match ($iteration->kind) {
                     SigningIterationKind::INTERNAL_APPROVAL => SignCategory::APPROVAL->value,
                     SigningIterationKind::EXTERNAL_SIGNING => SignCategory::EXTERNAL_APPROVAL->value,

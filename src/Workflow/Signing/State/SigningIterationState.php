@@ -4,16 +4,15 @@ declare(strict_types=1);
 
 namespace Dbp\Relay\PortfolioBundle\Workflow\Signing\State;
 
-/** Runtime task references and the output of one iteration, linked by its number. */
+/** The single participant's task and output for one step, linked by its number. */
 final class SigningIterationState
 {
     /**
-     * @param list<SigningTask>                            $tasks
      * @param array{fileId: string, filename: string}|null $signedDocument
      */
     public function __construct(
         public readonly int $number,
-        public readonly array $tasks,
+        public readonly string $taskId,
         public ?array $signedDocument = null,
     ) {
     }
@@ -22,7 +21,7 @@ final class SigningIterationState
     {
         return new self(
             $data['number'],
-            array_map(SigningTask::fromArray(...), $data['tasks']),
+            $data['taskId'],
             $data['signedDocument'] ?? null,
         );
     }
@@ -31,7 +30,7 @@ final class SigningIterationState
     {
         return [
             'number' => $this->number,
-            'tasks' => array_map(static fn (SigningTask $task): array => $task->toArray(), $this->tasks),
+            'taskId' => $this->taskId,
             'signedDocument' => $this->signedDocument,
         ];
     }

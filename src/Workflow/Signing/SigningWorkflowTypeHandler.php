@@ -23,7 +23,6 @@ use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningIterationKind;
 use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningIterationState;
 use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningJob;
 use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningParticipant;
-use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningTask;
 use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningWorkflowState;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
@@ -91,15 +90,15 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
         foreach ($job->getIterationData() as $iteration) {
             $user = $iteration->getInvitees()[0];
             $internal = $iteration->getIterationNumber() === 0 ? $this->emailResolver->resolve($user->getName()) : null;
-            $iterations[] = new SigningIteration($iteration->getIterationNumber(), $internal !== null ? SigningIterationKind::INTERNAL_APPROVAL : SigningIterationKind::EXTERNAL_SIGNING, [
+            $iterations[] = new SigningIteration($iteration->getIterationNumber(), $internal !== null ? SigningIterationKind::INTERNAL_APPROVAL : SigningIterationKind::EXTERNAL_SIGNING,
                 new SigningParticipant(
                     email: $user->getName(),
                     userId: $internal['personId'] ?? null,
                     displayName: $internal['displayName'] ?? ($user->getExternalUserName() ?: $user->getName()),
                     locale: $user->getLocale(),
                 ),
-            ]);
-            $iterationStates[] = new SigningIterationState($iteration->getIterationNumber(), [new SigningTask(0, Uuid::v4()->toRfc4122())]);
+            );
+            $iterationStates[] = new SigningIterationState($iteration->getIterationNumber(), Uuid::v4()->toRfc4122());
         }
 
         $files = $this->helper->getFiles($workflowId);
@@ -185,12 +184,11 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
     private function getSignerIdentity(SigningWorkflowState $state, bool $external): ?string
     {
         foreach ($state->job->iterations as $iteration) {
-            foreach ($iteration->participants as $participant) {
-                if ($participant->isExternal() === $external) {
-                    $name = trim($participant->displayName ?? '');
+            $participant = $iteration->participant;
+            if ($participant->isExternal() === $external) {
+                $name = trim($participant->displayName ?? '');
 
-                    return $name !== '' && $name !== $participant->email ? $name.' ('.$participant->email.')' : $participant->email;
-                }
+                return $name !== '' && $name !== $participant->email ? $name.' ('.$participant->email.')' : $participant->email;
             }
         }
 
@@ -239,10 +237,8 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
             return true;
         }
         foreach ($state->job->iterations as $iteration) {
-            foreach ($iteration->participants as $participant) {
-                if ($participant->userId === $personId) {
-                    return true;
-                }
+            if ($iteration->participant->userId === $personId) {
+                return true;
             }
         }
 
@@ -412,7 +408,7 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
         $state = SigningWorkflowState::fromArray($workflow->getInternalState());
         $iteration = $this->hasExpired($state) ? null : $state->getCurrentIteration();
 
-        return $iteration !== null ? array_map(static fn (SigningTask $task): string => $task->taskId, $iteration->tasks) : [];
+        return $iteration !== null ? [$iteration->taskId] : [];
     }
 
     public function getTaskResponse(WorkflowData $workflow, string $taskId, string $lang): array
