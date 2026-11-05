@@ -334,18 +334,28 @@ class SigningWorkflowTest extends AbstractTestCase
         $state = SigningWorkflowState::fromArray($workflow->getInternalState());
         $firstTask = $state->iterations[0]->invitees[0]->id;
         $secondTask = $state->iterations[1]->invitees[0]->id;
-        $state->iterations[0]->signedDocumentFileId = $state->documentToSignFileId;
-        $workflow->setInternalState($state->toArray());
-        $this->container->get('doctrine.orm.dbp_relay_portfolio_bundle_entity_manager')->flush();
-        $this->workflows->pingAll();
+        $handler = $this->container->get(SigningWorkflowTypeHandler::class);
+        $actionIds = fn (): array => array_map(static fn ($action): string => $action->getId(), $handler->getAvailableActions($this->data($workflow), 'en'));
+        self::assertContains(SigningWorkflowTypeHandler::ACTION_FIRST_SIGNATURE, $actionIds());
+        self::assertNotContains(SigningWorkflowTypeHandler::ACTION_SECOND_SIGNATURE, $actionIds());
+        $this->workflows->handleAction($workflow->getId(), SigningWorkflowTypeHandler::ACTION_FIRST_SIGNATURE, [], 'en');
+        $state = SigningWorkflowState::fromArray($workflow->getInternalState());
+        $firstFileId = $state->iterations[0]->signedDocumentFileId;
+        self::assertNotSame($state->documentToSignFileId, $firstFileId);
+        self::assertSame(SignJobState::ACTIVE, $state->status);
         self::assertNull($this->workflows->getTask($firstTask));
         self::assertNotNull($this->workflows->getTask($secondTask));
-        $state->iterations[1]->signedDocumentFileId = $state->documentToSignFileId;
-        $state->status = SignJobState::FINISHED_SUCCESS;
-        $workflow->setInternalState($state->toArray());
-        $this->container->get('doctrine.orm.dbp_relay_portfolio_bundle_entity_manager')->flush();
-        $this->workflows->pingAll();
+        self::assertNotContains(SigningWorkflowTypeHandler::ACTION_FIRST_SIGNATURE, $actionIds());
+        self::assertContains(SigningWorkflowTypeHandler::ACTION_SECOND_SIGNATURE, $actionIds());
+        $this->workflows->handleAction($workflow->getId(), SigningWorkflowTypeHandler::ACTION_SECOND_SIGNATURE, [], 'en');
+        $state = SigningWorkflowState::fromArray($workflow->getInternalState());
+        self::assertNotSame($firstFileId, $state->iterations[1]->signedDocumentFileId);
+        $files = $this->container->get(WorkflowFileService::class);
+        foreach ([$firstFileId, $state->iterations[1]->signedDocumentFileId] as $fileId) {
+            self::assertSame(SigningTestUtils::pdf()->getContent(), $files->download($workflow->getId(), $fileId)->getFileStream()->getContents());
+        }
         self::assertNull($this->workflows->getTask($secondTask));
+        self::assertNotContains(SigningWorkflowTypeHandler::ACTION_SECOND_SIGNATURE, $actionIds());
         self::assertTrue($workflow->isActive());
         self::assertSame(SignJobState::FINISHED_SUCCESS, $this->sign->getJobState($workflow->getId(), 'EMAIL')->getState());
     }
@@ -424,7 +434,7 @@ class SigningWorkflowTest extends AbstractTestCase
         self::assertSame(SignJobState::ACTIVE, $this->sign->getJobState($workflow->getId(), 'EMAIL')->getState());
         $handler = $this->container->get(SigningWorkflowTypeHandler::class);
         $actions = $handler->getAvailableActions($this->data($workflow), 'en');
-        self::assertSame([SigningWorkflowTypeHandler::ACTION_DELETE, SigningWorkflowTypeHandler::ACTION_VIEW_DOCUMENT, SigningWorkflowTypeHandler::ACTION_SAP_CANCEL], array_map(static fn ($action): string => $action->getId(), $actions));
+        self::assertSame([SigningWorkflowTypeHandler::ACTION_DELETE, SigningWorkflowTypeHandler::ACTION_VIEW_DOCUMENT, SigningWorkflowTypeHandler::ACTION_SAP_CANCEL, SigningWorkflowTypeHandler::ACTION_FIRST_SIGNATURE], array_map(static fn ($action): string => $action->getId(), $actions));
         self::assertSame('SAP cancel', $actions[2]->getLabel());
         self::assertStringContainsString('0 / 2', $handler->getStatusDisplay($this->data($workflow), 'en')->getDescription());
         $this->workflows->handleAction($workflow->getId(), SigningWorkflowTypeHandler::ACTION_SAP_CANCEL, [], 'en');

@@ -11,6 +11,8 @@ signing_workflow:
         pending: 'Pending'
         pending_desc: '%signed% / %total% signature(s) completed'
     action:
+        first_signature: 'First signature (testing)'
+        second_signature: 'Second signature (testing)'
         sap_cancel: 'SAP cancel'
         view_document: 'View document'
         view_attachment: 'View attachment: %filename%'

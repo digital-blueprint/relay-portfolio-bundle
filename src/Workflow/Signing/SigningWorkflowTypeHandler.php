@@ -21,6 +21,7 @@ use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningInvitee;
 use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningIteration;
 use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningWorkflowState;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
+use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Symfony\Component\Translation\Loader\YamlFileLoader;
 use Symfony\Component\Translation\Translator;
@@ -31,6 +32,8 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
     public const TYPE = 'signing';
     public const ACTION_DELETE = 'delete';
     public const ACTION_SAP_CANCEL = 'sap-cancel';
+    public const ACTION_FIRST_SIGNATURE = 'first-signature';
+    public const ACTION_SECOND_SIGNATURE = 'second-signature';
     public const ACTION_VIEW_DOCUMENT = 'view-document';
     public const ACTION_VIEW_ATTACHMENT_PREFIX = 'view-attachment-';
     public const RENDER_DOCUMENT = 'document';
@@ -242,6 +245,14 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
 
         if ($workflow->isActive() && !$state->status->isFinal()) {
             $actions[] = new Action(self::ACTION_SAP_CANCEL, $this->translator->trans('signing_workflow.action.sap_cancel', locale: $lang));
+            $iteration = $state->getCurrentIteration();
+            if ($iteration !== null) {
+                $first = $iteration->number === 0;
+                $actions[] = new Action(
+                    $first ? self::ACTION_FIRST_SIGNATURE : self::ACTION_SECOND_SIGNATURE,
+                    $this->translator->trans('signing_workflow.action.'.($first ? 'first_signature' : 'second_signature'), locale: $lang),
+                );
+            }
         }
 
         return $actions;
@@ -249,6 +260,9 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
 
     public function handleAction(WorkflowData $workflow, string $action, array $payload, string $lang): WorkflowActionResult
     {
+        if ($action === self::ACTION_FIRST_SIGNATURE || $action === self::ACTION_SECOND_SIGNATURE) {
+            return $this->signIteration($workflow, $action === self::ACTION_FIRST_SIGNATURE ? 0 : 1);
+        }
         if ($action === self::ACTION_SAP_CANCEL) {
             return $this->cancel($workflow, SigningWorkflowState::fromArray($workflow->getInternalState())->constituentEmail);
         }
@@ -271,6 +285,27 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
             return new WorkflowActionResult(internalState: $workflow->getInternalState(), delete: true);
         }
         throw new \RuntimeException(sprintf('Signing action "%s" is not implemented yet.', $action));
+    }
+
+    private function signIteration(WorkflowData $workflow, int $number): WorkflowActionResult
+    {
+        $state = SigningWorkflowState::fromArray($workflow->getInternalState());
+        $iteration = $state->getCurrentIteration();
+        if (!$workflow->isActive() || $iteration === null || $iteration->number !== $number) {
+            throw new BadRequestHttpException('Signature does not belong to the current signing iteration.');
+        }
+
+        $document = $state->getCurrentDocument();
+        $files = $this->helper->getFiles($workflow->getId());
+        // Placeholder: copy the current PDF without applying a real signature.
+        $contents = $files->download($document['fileId'])->getFileStream()->getContents();
+        $iteration->signedDocumentFileId = $files->store($document['filename'], 'application/pdf', $contents);
+        $iteration->signedDocumentFilename = $document['filename'];
+        if ($state->getCurrentIteration() === null) {
+            $state->status = SignJobState::FINISHED_SUCCESS;
+        }
+
+        return new WorkflowActionResult(internalState: $state->toArray());
     }
 
     public function cancel(WorkflowData $workflow, string $email): WorkflowActionResult
