@@ -16,6 +16,7 @@ signing_workflow:
         first_signature: 'First signature (testing)'
         second_signature: 'Second signature (testing)'
         sap_cancel: 'SAP cancel'
+        sap_retrieve: 'SAP retrieve'
         view_document: 'View document'
         view_attachment: 'View attachment: %filename%'
         file_description: 'Filename: %filename%'

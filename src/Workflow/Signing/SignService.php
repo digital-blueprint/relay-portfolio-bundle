@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Dbp\Relay\PortfolioBundle\Workflow\Signing;
 
-use Dbp\Relay\PortfolioBundle\Handler\WorkflowActionResult;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowData;
 use Dbp\Relay\PortfolioBundle\Persistence\WorkflowPersistence;
 use Dbp\Relay\PortfolioBundle\Service\WorkflowFileService;
@@ -93,12 +92,7 @@ class SignService implements SignServiceInterface
         }
         $document = $state->getCurrentDocument();
         $contents = $this->files->download($processInstanceId, $document['fileId'])->getFileStream()->getContents();
-        $this->workflows->updateWorkflow($processInstanceId, function (WorkflowData $workflow): WorkflowActionResult {
-            $state = SigningWorkflowState::fromArray($workflow->getInternalState());
-            $state->retrievedAt = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
-
-            return new WorkflowActionResult(internalState: $state->toArray());
-        });
+        $this->workflows->updateWorkflow($processInstanceId, fn (WorkflowData $workflow) => $this->handler->recordRetrieval($workflow));
 
         return $contents;
     }

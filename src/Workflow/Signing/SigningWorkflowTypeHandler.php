@@ -32,6 +32,7 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
     public const TYPE = 'signing';
     public const ACTION_DELETE = 'delete';
     public const ACTION_SAP_CANCEL = 'sap-cancel';
+    public const ACTION_SAP_RETRIEVE = 'sap-retrieve';
     public const ACTION_FIRST_SIGNATURE = 'first-signature';
     public const ACTION_SECOND_SIGNATURE = 'second-signature';
     public const ACTION_VIEW_DOCUMENT = 'view-document';
@@ -261,12 +262,18 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
                 );
             }
         }
+        if ($state->status === SignJobState::FINISHED_SUCCESS) {
+            $actions[] = new Action(self::ACTION_SAP_RETRIEVE, $this->translator->trans('signing_workflow.action.sap_retrieve', locale: $lang));
+        }
 
         return $actions;
     }
 
     public function handleAction(WorkflowData $workflow, string $action, array $payload, string $lang): WorkflowActionResult
     {
+        if ($action === self::ACTION_SAP_RETRIEVE) {
+            return $this->recordRetrieval($workflow);
+        }
         if ($action === self::ACTION_FIRST_SIGNATURE || $action === self::ACTION_SECOND_SIGNATURE) {
             return $this->signIteration($workflow, $action === self::ACTION_FIRST_SIGNATURE ? 0 : 1);
         }
@@ -316,6 +323,17 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
             internalState: $state->toArray(),
             close: $state->status === SignJobState::FINISHED_SUCCESS ? true : null,
         );
+    }
+
+    public function recordRetrieval(WorkflowData $workflow): WorkflowActionResult
+    {
+        $state = SigningWorkflowState::fromArray($workflow->getInternalState());
+        if ($state->status !== SignJobState::FINISHED_SUCCESS) {
+            throw new BadRequestHttpException('The final document is not available for retrieval yet.');
+        }
+        $state->retrievedAt = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+
+        return new WorkflowActionResult(internalState: $state->toArray());
     }
 
     public function cancel(WorkflowData $workflow, string $email): WorkflowActionResult

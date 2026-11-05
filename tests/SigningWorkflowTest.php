@@ -343,6 +343,7 @@ class SigningWorkflowTest extends AbstractTestCase
         $firstFileId = $state->iterations[0]->signedDocumentFileId;
         self::assertNotSame($state->documentToSignFileId, $firstFileId);
         self::assertSame(SignJobState::ACTIVE, $state->status);
+        self::assertNotContains(SigningWorkflowTypeHandler::ACTION_SAP_RETRIEVE, $actionIds());
         self::assertTrue($workflow->isActive());
         self::assertSame(404, $this->controller->getDocument($workflow->getId(), $this->request())->getStatusCode());
         self::assertNull($workflow->getInternalState()['retrievedAt']);
@@ -366,6 +367,10 @@ class SigningWorkflowTest extends AbstractTestCase
         self::assertStringContainsString('Workflow ID: '.$workflow->getId(), $handler->getStatusDisplay($this->data($workflow), 'en')->getDescription());
         $this->workflows->getRenderResponse($workflow, SigningWorkflowTypeHandler::RENDER_DOCUMENT, 'en');
         self::assertNull($workflow->getInternalState()['retrievedAt']);
+        self::assertContains(SigningWorkflowTypeHandler::ACTION_SAP_RETRIEVE, $actionIds());
+        $this->workflows->handleAction($workflow->getId(), SigningWorkflowTypeHandler::ACTION_SAP_RETRIEVE, [], 'en');
+        self::assertNotNull($workflow->getInternalState()['retrievedAt']);
+        self::assertSame('Transferred to SAP', $handler->getStatusDisplay($this->data($workflow), 'en')->getLabel());
         $response = $this->controller->getDocument($workflow->getId(), $this->request());
         self::assertSame(200, $response->getStatusCode());
         self::assertSame('application/pdf', $response->headers->get('Content-Type'));
@@ -378,6 +383,9 @@ class SigningWorkflowTest extends AbstractTestCase
         self::assertSame('Transferred to SAP', $handler->getStatusDisplay($this->data($workflow), 'en')->getLabel());
         self::assertSame('An SAP übertragen', $handler->getStatusDisplay($this->data($workflow), 'de')->getLabel());
         self::assertSame(200, $this->controller->getDocument($id, $this->request())->getStatusCode());
+        self::assertGreaterThan(new \DateTimeImmutable($retrievedAt), new \DateTimeImmutable($workflow->getInternalState()['retrievedAt']));
+        $retrievedAt = $workflow->getInternalState()['retrievedAt'];
+        $this->workflows->handleAction($id, SigningWorkflowTypeHandler::ACTION_SAP_RETRIEVE, [], 'en');
         self::assertGreaterThan(new \DateTimeImmutable($retrievedAt), new \DateTimeImmutable($workflow->getInternalState()['retrievedAt']));
         self::assertFalse($workflow->isActive());
     }
