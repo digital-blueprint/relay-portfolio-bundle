@@ -167,6 +167,11 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
                 '%date%' => $state->expirationDate->format('Y-m-d H:i:s T'),
             ], locale: $lang));
         }
+        if ($state->referenceId !== null) {
+            $description = trim($description.' '.$this->translator->trans('signing_workflow.reference_id', [
+                '%referenceId%' => $state->referenceId,
+            ], locale: $lang));
+        }
 
         return trim($description.' '.$this->translator->trans('signing_workflow.workflow_id', ['%workflowId%' => $workflow->getId()], locale: $lang));
     }

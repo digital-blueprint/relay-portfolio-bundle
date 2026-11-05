@@ -2,6 +2,7 @@ signing_workflow:
     name: 'Arbeitsvertrag'
     description: 'Arbeitsvertrag zur Freigabe und Unterzeichnung.'
     workflow_id: 'Workflow-ID: %workflowId%.'
+    reference_id: 'Referenz-ID: %referenceId%.'
     expiration: 'Signaturfrist: %date%.'
     external_signer: 'Externe unterzeichnende Person: %signer%.'
     approver: 'Freigebende Person: %signer%.'

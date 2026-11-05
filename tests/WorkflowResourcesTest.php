@@ -49,6 +49,7 @@ class WorkflowResourcesTest extends AbstractTestCase
         self::assertStringContainsString('Please sign the contract.', $description);
         self::assertStringContainsString('Workflow-ID: wf-signing.', $description);
         self::assertStringNotContainsString('Signaturfrist:', $description);
+        self::assertStringNotContainsString('Referenz-ID:', $description);
         self::assertStringContainsString('Freigebende Person: Approver (approver@example.com).', $description);
         self::assertStringContainsString('Guest Example', $description);
         self::assertStringContainsString('guest@example.com', $description);
@@ -56,10 +57,12 @@ class WorkflowResourcesTest extends AbstractTestCase
         $external->displayName = null;
         $state->iterations[0]->invitees[0]->displayName = null;
         $state->expirationDate = new \DateTimeImmutable('2026-12-01T12:00:00+00:00');
+        $state->referenceId = '00042';
         $workflow = new WorkflowData('wf-signing', $handler->getType(), true, $state->toArray(), new \DateTimeImmutable());
         self::assertStringContainsString('guest@example.com', $handler->getName($workflow, 'de'));
         self::assertStringContainsString('guest@example.com', $handler->getDescription($workflow, 'de'));
         self::assertStringContainsString('Freigebende Person: approver@example.com.', $handler->getDescription($workflow, 'de'));
         self::assertStringContainsString('Signaturfrist: 2026-12-01 12:00:00 GMT+0000.', $handler->getDescription($workflow, 'de'));
+        self::assertStringContainsString('Referenz-ID: 00042.', $handler->getDescription($workflow, 'de'));
     }
 }

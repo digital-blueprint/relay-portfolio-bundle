@@ -105,6 +105,8 @@ class SigningDebugWorkflowTypeHandler implements WorkflowTypeHandlerInterface
             'constituent' => $user,
             'positionType' => 'SIGNATURE_PAGE',
             'metaData' => [
+                'description' => $this->translator->trans('signing_debug.job_description', locale: $lang),
+                'referenceId' => sprintf('%05d', random_int(0, 10000)),
                 'expirationDate' => (new \DateTimeImmutable('+1 week', new \DateTimeZone('UTC')))->format('Y-m-d\TH:i:s.vO'),
             ],
             'iterationData' => [

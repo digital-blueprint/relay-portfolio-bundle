@@ -15,6 +15,8 @@ use Dbp\Relay\PortfolioBundle\SignApi\SignJobState;
 use Dbp\Relay\PortfolioBundle\SignApi\SignJobStateResponse;
 use Dbp\Relay\PortfolioBundle\SignApi\SignServiceInterface;
 use Dbp\Relay\PortfolioBundle\SignApi\SignUser;
+use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningInvitee;
+use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningIteration;
 use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningWorkflowState;
 use Symfony\Component\DependencyInjection\Attribute\AutoconfigureTag;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
@@ -62,7 +64,29 @@ class SignService implements SignServiceInterface
             throw SignException::jobNotFound($processInstanceId);
         }
 
-        return new SignJobStateResponse(SigningWorkflowState::fromArray($workflow->getInternalState())->status);
+        $state = SigningWorkflowState::fromArray($workflow->getInternalState());
+
+        return new SignJobStateResponse(
+            state: $state->status,
+            processId: $state->signingProcessId,
+            processInstanceId: $workflow->getId(),
+            jobMetaData: array_filter([
+                'description' => $state->description,
+                'referenceId' => $state->referenceId,
+                'expirationDate' => $state->expirationDate?->format('Y-m-d\TH:i:s.vP'),
+            ], static fn (?string $value): bool => $value !== null),
+            creationDate: $workflow->getCreatedAt(),
+            currentIteration: $state->getCurrentIteration()?->number,
+            iterations: array_map(static fn (SigningIteration $iteration): array => [
+                'numberOfSignatures' => 1,
+                'invitees' => array_map(static fn (SigningInvitee $invitee): array => [
+                    'classifier' => SignClassifier::EMAIL->value,
+                    'name' => $invitee->email,
+                ], $iteration->invitees),
+                'category' => $iteration->category->value,
+                'iterationNumber' => $iteration->number,
+            ], $state->iterations),
+        );
     }
 
     public function cancelJob(string $processInstanceId, SignUser $requestedBy): SignJobState

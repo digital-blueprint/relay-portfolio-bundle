@@ -1,6 +1,7 @@
 signing_debug:
     name: 'Signing debug'
     description: 'Create a fresh sample signing workflow with a document and an attachment. All participants use your email address.'
+    job_description: 'Employment contract for approval and signing (Debug).'
     state:
         ready: 'Ready'
         ready_description: 'Use the action to create a fresh signing workflow. You can repeat this as often as needed.'

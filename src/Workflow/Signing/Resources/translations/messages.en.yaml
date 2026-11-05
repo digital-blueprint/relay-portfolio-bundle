@@ -2,6 +2,7 @@ signing_workflow:
     name: 'Employment Contract'
     description: 'Employment contract for approval and signing.'
     workflow_id: 'Workflow ID: %workflowId%.'
+    reference_id: 'Reference ID: %referenceId%.'
     expiration: 'Signing deadline: %date%.'
     external_signer: 'External signer: %signer%.'
     approver: 'Approver: %signer%.'
