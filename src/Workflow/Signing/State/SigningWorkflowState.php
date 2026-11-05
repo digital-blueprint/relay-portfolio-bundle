@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace Dbp\Relay\PortfolioBundle\Workflow\Signing\State;
 
-use Dbp\Relay\PortfolioBundle\SignApi\SignJobState;
-
 /**
  * Data for one signed PDF and unsigned attachments; lifecycle rules live in the handler.
  * Blob files are owned by the workflow UUID, which is not duplicated here.
@@ -31,13 +29,14 @@ final class SigningWorkflowState
         public ?string $description = null,
         public ?string $referenceId = null,
         public ?\DateTimeImmutable $expirationDate = null,
-        public SignJobState $signingStatus = SignJobState::ACTIVE,
         // Most recent retrieval of the final document via the API.
         public ?\DateTimeImmutable $lastRetrievedAt = null,
         public ?string $cancelledByEmail = null,
         public ?string $cancelledByUserId = null,
         public ?string $constituentDisplayName = null,
         public ?\DateTimeImmutable $cancelledAt = null,
+        // Recorded timeout transition, not merely an elapsed expirationDate.
+        public ?\DateTimeImmutable $expiredAt = null,
     ) {
     }
 
@@ -57,7 +56,7 @@ final class SigningWorkflowState
 
     public function getCurrentIteration(): ?SigningIteration
     {
-        if ($this->signingStatus === SignJobState::ACTIVE) {
+        if (!$this->isFinal()) {
             foreach ($this->iterations as $iteration) {
                 if ($iteration->signedDocument === null) {
                     return $iteration;
@@ -66,6 +65,26 @@ final class SigningWorkflowState
         }
 
         return null;
+    }
+
+    public function isCompleted(): bool
+    {
+        // Terminal timestamps take precedence over document results.
+        if ($this->cancelledAt !== null || $this->expiredAt !== null || $this->iterations === []) {
+            return false;
+        }
+        foreach ($this->iterations as $iteration) {
+            if ($iteration->signedDocument === null) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    public function isFinal(): bool
+    {
+        return $this->cancelledAt !== null || $this->expiredAt !== null || $this->isCompleted();
     }
 
     public static function fromArray(array $data): self
@@ -84,12 +103,12 @@ final class SigningWorkflowState
             description: $data['description'] ?? null,
             referenceId: $data['referenceId'] ?? null,
             expirationDate: isset($data['expirationDate']) ? new \DateTimeImmutable($data['expirationDate']) : null,
-            signingStatus: SignJobState::from($data['signingStatus']),
             lastRetrievedAt: isset($data['lastRetrievedAt']) ? new \DateTimeImmutable($data['lastRetrievedAt']) : null,
             cancelledByEmail: $data['cancelledByEmail'] ?? null,
             cancelledByUserId: $data['cancelledByUserId'] ?? null,
             constituentDisplayName: $data['constituentDisplayName'] ?? null,
             cancelledAt: isset($data['cancelledAt']) ? new \DateTimeImmutable($data['cancelledAt']) : null,
+            expiredAt: isset($data['expiredAt']) ? new \DateTimeImmutable($data['expiredAt']) : null,
         );
     }
 
@@ -101,7 +120,6 @@ final class SigningWorkflowState
             'constituentEmail' => $this->constituentEmail,
             'constituentUserId' => $this->constituentUserId,
             'constituentDisplayName' => $this->constituentDisplayName,
-            'signingStatus' => $this->signingStatus->value,
             'documentToSign' => $this->documentToSign,
             'attachments' => $this->attachments,
             'iterations' => array_map(static fn (SigningIteration $iteration): array => $iteration->toArray(), $this->iterations),
@@ -110,6 +128,7 @@ final class SigningWorkflowState
             'expirationDate' => $this->expirationDate?->format('Y-m-d\TH:i:s.vP'),
             'lastRetrievedAt' => $this->lastRetrievedAt?->format('Y-m-d\TH:i:s.vP'),
             'cancelledAt' => $this->cancelledAt?->format('Y-m-d\TH:i:s.vP'),
+            'expiredAt' => $this->expiredAt?->format('Y-m-d\TH:i:s.vP'),
             'cancelledByEmail' => $this->cancelledByEmail,
             'cancelledByUserId' => $this->cancelledByUserId,
         ];

@@ -23,8 +23,15 @@ Identity fields have the following meanings:
 - Email and display name are creation-time snapshots. `locale` is an optional
   external signer preference, not an identity attribute.
 
-`signingStatus` tracks the signing job independently of the workflow's database
-closure timestamp: successful jobs remain open until their final document is
+Signing status is derived, not stored. Cancellation (`cancelledAt`) takes
+precedence over recorded expiration (`expiredAt`); otherwise, all iterations
+having a `signedDocument` means completion. Remaining jobs are active. The
+handler prevents terminal transitions from overwriting each other, and only
+`SignService` translates these facts into signing API status values.
+
+An elapsed `expirationDate` blocks signing immediately but does not itself change
+the recorded status. The timeout check records `expiredAt` and closes the workflow
+in one transaction. Successful jobs remain open until their final document is
 retrieved. `cancelledAt` records the first cancellation in UTC and stays unchanged
 on retries, together with the cancellation actor. `lastRetrievedAt` records the
 most recent final-document retrieval. Existing database completion timestamps

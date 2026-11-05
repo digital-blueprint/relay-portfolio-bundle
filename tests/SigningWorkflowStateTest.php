@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Dbp\Relay\PortfolioBundle\Tests;
 
 use Dbp\Relay\PortfolioBundle\SignApi\SignCategory;
-use Dbp\Relay\PortfolioBundle\SignApi\SignJobState;
 use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningInvitee;
 use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningIteration;
 use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningWorkflowState;
@@ -37,11 +36,10 @@ class SigningWorkflowStateTest extends TestCase
         $state = $this->createState();
         $state->iterations[0]->signedDocument = ['fileId' => 'first-result', 'filename' => 'first-signed.pdf'];
         $state->iterations[1]->signedDocument = ['fileId' => 'final-result', 'filename' => 'final-signed.pdf'];
-        $state->signingStatus = SignJobState::FINISHED_SUCCESS;
         $state->lastRetrievedAt = new \DateTimeImmutable('2026-11-03T12:00:00.123+01:00');
 
         $data = json_decode(json_encode($state->toArray(), JSON_THROW_ON_ERROR), true, flags: JSON_THROW_ON_ERROR);
-        self::assertSame(SignJobState::FINISHED_SUCCESS->value, $data['signingStatus']);
+        self::assertArrayNotHasKey('signingStatus', $data);
         self::assertArrayNotHasKey('status', $data);
         self::assertSame(1, $data['version']);
         self::assertSame($state->documentToSign, $data['documentToSign']);
@@ -50,24 +48,28 @@ class SigningWorkflowStateTest extends TestCase
         self::assertSame($state->iterations[0]->signedDocument, $data['iterations'][0]['signedDocument']);
         self::assertArrayNotHasKey('signedDocumentFileId', $data['iterations'][0]);
         self::assertEquals($state, SigningWorkflowState::fromArray($data));
+        self::assertTrue(SigningWorkflowState::fromArray($data)->isCompleted());
 
         $state = $this->createState();
-        $state->signingStatus = SignJobState::FINISHED_WF_CANCELLED;
         $state->cancelledByEmail = 'owner@example.com';
         $state->cancelledByUserId = 'user-owner';
         $state->cancelledAt = new \DateTimeImmutable('2026-11-03T12:00:00.123+01:00');
+        self::assertEquals($state, SigningWorkflowState::fromArray($state->toArray()));
+
+        $state = $this->createState();
+        $state->expiredAt = new \DateTimeImmutable('2026-11-03T12:00:00.123+01:00');
         self::assertEquals($state, SigningWorkflowState::fromArray($state->toArray()));
     }
 
     public function testOptionalFields(): void
     {
         $data = $this->createState()->toArray();
-        foreach (['attachments', 'description', 'referenceId', 'expirationDate', 'lastRetrievedAt', 'cancelledAt', 'cancelledByEmail', 'cancelledByUserId'] as $field) {
+        foreach (['attachments', 'description', 'referenceId', 'expirationDate', 'lastRetrievedAt', 'cancelledAt', 'expiredAt', 'cancelledByEmail', 'cancelledByUserId'] as $field) {
             unset($data[$field]);
         }
         $state = SigningWorkflowState::fromArray($data);
         self::assertSame([], $state->attachments);
-        foreach (['description', 'referenceId', 'expirationDate', 'lastRetrievedAt', 'cancelledAt', 'cancelledByEmail', 'cancelledByUserId'] as $field) {
+        foreach (['description', 'referenceId', 'expirationDate', 'lastRetrievedAt', 'cancelledAt', 'expiredAt', 'cancelledByEmail', 'cancelledByUserId'] as $field) {
             self::assertNull($state->$field);
         }
     }
@@ -79,24 +81,63 @@ class SigningWorkflowStateTest extends TestCase
         self::assertSame($state->iterations[0], $state->getCurrentIteration());
         self::assertFalse($state->iterations[0]->invitees[0]->isExternal());
         self::assertTrue($state->iterations[1]->invitees[0]->isExternal());
+        self::assertFalse($state->isCompleted());
+        self::assertFalse($state->isFinal());
 
         foreach ($state->iterations as $index => $iteration) {
             $iteration->signedDocument = ['fileId' => 'result-'.$index, 'filename' => 'signed-'.$index.'.pdf'];
             self::assertSame(['fileId' => 'result-'.$index, 'filename' => 'signed-'.$index.'.pdf'], $state->getCurrentDocument());
             self::assertSame($state->iterations[$index + 1] ?? null, $state->getCurrentIteration());
+            self::assertSame($index === 1, $state->isCompleted());
+            self::assertSame($index === 1, $state->isFinal());
         }
         self::assertSame('original', $state->documentToSign['fileId']);
     }
 
-    public function testFinishedJobsHaveNoCurrentIteration(): void
+    #[DataProvider('terminalTimestamps')]
+    public function testTerminalTimestampOverridesDocuments(string $field): void
     {
         $state = $this->createState();
-        foreach (SignJobState::cases() as $signingStatus) {
-            if ($signingStatus->isFinal()) {
-                $state->signingStatus = $signingStatus;
-                self::assertNull($state->getCurrentIteration());
-            }
+        $state->$field = new \DateTimeImmutable();
+        self::assertTrue($state->isFinal());
+        self::assertFalse($state->isCompleted());
+        self::assertNull($state->getCurrentIteration());
+        foreach ($state->iterations as $iteration) {
+            $iteration->signedDocument = $state->documentToSign;
         }
+        self::assertFalse($state->isCompleted());
+        self::assertNull($state->getCurrentIteration());
+    }
+
+    public static function terminalTimestamps(): iterable
+    {
+        yield ['cancelledAt'];
+        yield ['expiredAt'];
+    }
+
+    public function testPastDeadlineDoesNotDeriveRecordedExpiration(): void
+    {
+        $state = $this->createState();
+        $state->expirationDate = new \DateTimeImmutable('-1 day');
+        self::assertFalse($state->isFinal());
+        self::assertSame($state->iterations[0], $state->getCurrentIteration());
+        self::assertNull($state->expiredAt);
+    }
+
+    public function testEmptyIterationsAreNotCompleted(): void
+    {
+        $state = $this->createState();
+        $state->iterations = [];
+        self::assertFalse($state->isCompleted());
+        self::assertFalse($state->isFinal());
+    }
+
+    public function testLastDocumentAloneDoesNotMeanCompleted(): void
+    {
+        $state = $this->createState();
+        $state->iterations[1]->signedDocument = $state->documentToSign;
+        self::assertFalse($state->isCompleted());
+        self::assertSame($state->iterations[0], $state->getCurrentIteration());
     }
 
     #[DataProvider('unsupportedVersions')]

@@ -67,7 +67,7 @@ class SignService implements SignServiceInterface
         $state = SigningWorkflowState::fromArray($workflow->getInternalState());
 
         return new SignJobStateResponse(
-            state: $state->signingStatus,
+            state: $this->getSigningStatus($state),
             processId: $state->signingProcessId,
             processInstanceId: $workflow->getId(),
             jobMetaData: array_filter([
@@ -101,7 +101,7 @@ class SignService implements SignServiceInterface
 
         $result = $this->workflows->updateWorkflow($processInstanceId, fn (WorkflowData $workflow) => $this->handler->cancel($workflow, $requestedBy->getName()));
 
-        return SigningWorkflowState::fromArray($result->getInternalState())->signingStatus;
+        return $this->getSigningStatus(SigningWorkflowState::fromArray($result->getInternalState()));
     }
 
     public function getDocument(string $processInstanceId): ?string
@@ -111,7 +111,7 @@ class SignService implements SignServiceInterface
             throw SignException::jobNotFound($processInstanceId);
         }
         $state = SigningWorkflowState::fromArray($workflow->getInternalState());
-        if ($state->signingStatus !== SignJobState::FINISHED_SUCCESS) {
+        if (!$state->isCompleted()) {
             return null;
         }
         $document = $state->getCurrentDocument();
@@ -119,6 +119,16 @@ class SignService implements SignServiceInterface
         $this->workflows->updateWorkflow($processInstanceId, fn (WorkflowData $workflow) => $this->handler->recordRetrieval($workflow));
 
         return $contents;
+    }
+
+    private function getSigningStatus(SigningWorkflowState $state): SignJobState
+    {
+        return match (true) {
+            $state->cancelledAt !== null => SignJobState::FINISHED_WF_CANCELLED,
+            $state->expiredAt !== null => SignJobState::FINISHED_TIMEOUT,
+            $state->isCompleted() => SignJobState::FINISHED_SUCCESS,
+            default => SignJobState::ACTIVE,
+        };
     }
 
     private function findWorkflow(string $id): ?WorkflowPersistence

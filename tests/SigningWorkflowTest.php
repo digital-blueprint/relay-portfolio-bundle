@@ -166,11 +166,11 @@ class SigningWorkflowTest extends AbstractTestCase
         self::assertArrayNotHasKey('endDate', $payload);
         self::assertArrayNotHasKey('eventType', $payload);
         $state = SigningWorkflowState::fromArray($workflow->getInternalState());
-        $state->signingStatus = SignJobState::FINISHED_FAILED;
+        $state->cancelledAt = new \DateTimeImmutable();
         $workflow->setInternalState($state->toArray());
         $em->flush();
         $payload = json_decode($this->controller->getJobState($id, 'EMAIL', $this->request())->getContent(), true);
-        self::assertSame('FINISHED_FAILED', $payload['state']);
+        self::assertSame('FINISHED_WF_CANCELLED', $payload['state']);
         self::assertArrayNotHasKey('currentIteration', $payload);
         self::assertSame(400, $this->controller->getJobState($id, 'ID', $this->request())->getStatusCode());
         self::assertNull($this->sign->resolveProcessId(Uuid::v4()->toRfc4122()));
@@ -274,13 +274,16 @@ class SigningWorkflowTest extends AbstractTestCase
         $this->workflows->handleAction($id, SigningWorkflowTypeHandler::ACTION_EXPIRE, [], 'en');
         $state = SigningWorkflowState::fromArray($workflow->getInternalState());
         self::assertLessThanOrEqual(new \DateTimeImmutable(), $state->expirationDate);
-        self::assertSame(SignJobState::FINISHED_TIMEOUT, $state->signingStatus);
+        self::assertNotNull($state->expiredAt);
+        self::assertTrue($state->isFinal());
+        $expiredAt = $state->expiredAt;
         self::assertFalse($workflow->isActive());
         self::assertSame([], $this->workflows->getTasksForWorkflow($id, 1, 10));
         $this->workflows->pingAll();
         $this->container->get('doctrine.orm.dbp_relay_portfolio_bundle_entity_manager')->clear();
         $workflow = $this->workflows->getWorkflow($id);
         self::assertFalse($workflow->isActive());
+        self::assertEquals($expiredAt, SigningWorkflowState::fromArray($workflow->getInternalState())->expiredAt);
         self::assertSame('FINISHED_TIMEOUT', json_decode($this->controller->getJobState($id, 'EMAIL', $this->request())->getContent(), true)['state']);
         self::assertSame([], $this->workflows->getTasksForWorkflow($id, 1, 10));
         self::assertSame(404, $this->controller->getDocument($id, $this->request())->getStatusCode());
@@ -406,7 +409,8 @@ class SigningWorkflowTest extends AbstractTestCase
         $state = SigningWorkflowState::fromArray($workflow->getInternalState());
         $firstFileId = $state->iterations[0]->signedDocument['fileId'];
         self::assertNotSame($state->documentToSign['fileId'], $firstFileId);
-        self::assertSame(SignJobState::ACTIVE, $state->signingStatus);
+        self::assertFalse($state->isFinal());
+        self::assertFalse($state->isCompleted());
         self::assertSame(1, $this->sign->getJobState($workflow->getId(), 'EMAIL')->toArray()['currentIteration']);
         self::assertNotContains(SigningWorkflowTypeHandler::ACTION_SAP_RETRIEVE, $actionIds());
         self::assertTrue($workflow->isActive());
@@ -525,27 +529,32 @@ class SigningWorkflowTest extends AbstractTestCase
     }
 
     #[DataProvider('finalStatuses')]
-    public function testFinalStatusCannotBeOverwrittenByExpirationOrCancellation(SignJobState $status): void
+    public function testFinalStatusCannotBeOverwrittenByExpirationOrCancellation(string $status, SignJobState $apiStatus): void
     {
         $workflow = $this->create();
         $state = SigningWorkflowState::fromArray($workflow->getInternalState());
-        $state->signingStatus = $status;
+        if ($status === 'completed') {
+            foreach ($state->iterations as $iteration) {
+                $iteration->signedDocument = $state->documentToSign;
+            }
+        } else {
+            $state->$status = new \DateTimeImmutable();
+        }
         $workflow->setInternalState($state->toArray());
+        $this->container->get('doctrine.orm.dbp_relay_portfolio_bundle_entity_manager')->flush();
+        self::assertSame($apiStatus, $this->sign->getJobState($workflow->getId(), 'EMAIL')->getState());
         $handler = $this->container->get(SigningWorkflowTypeHandler::class);
         $result = $handler->cancel($this->data($workflow), 'owner@example.com');
         self::assertSame($state->toArray(), $result->getInternalState());
-        self::assertNull(SigningWorkflowState::fromArray($result->getInternalState())->cancelledAt);
         $this->expectException(BadRequestHttpException::class);
         $handler->handleAction($this->data($workflow), SigningWorkflowTypeHandler::ACTION_EXPIRE, [], 'en');
     }
 
     public static function finalStatuses(): iterable
     {
-        foreach (SignJobState::cases() as $status) {
-            if ($status->isFinal()) {
-                yield $status->value => [$status];
-            }
-        }
+        yield 'completed' => ['completed', SignJobState::FINISHED_SUCCESS];
+        yield 'cancelled' => ['cancelledAt', SignJobState::FINISHED_WF_CANCELLED];
+        yield 'expired' => ['expiredAt', SignJobState::FINISHED_TIMEOUT];
     }
 
     public function testPingDoesNotOverwriteNewerSuccessfulState(): void
@@ -558,13 +567,12 @@ class SigningWorkflowTest extends AbstractTestCase
         $em->flush();
 
         // Simulate another request completing the job while this entity remains stale.
-        $state->signingStatus = SignJobState::FINISHED_SUCCESS;
         foreach ($state->iterations as $iteration) {
             $iteration->signedDocument = $state->documentToSign;
         }
         $em->getConnection()->executeStatement('UPDATE portfolio_workflows SET internal_state = ? WHERE id = ?', [json_encode($state->toArray(), JSON_THROW_ON_ERROR), $workflow->getId()]);
         $this->workflows->pingAll();
-        self::assertSame(SignJobState::FINISHED_SUCCESS, SigningWorkflowState::fromArray($workflow->getInternalState())->signingStatus);
+        self::assertTrue(SigningWorkflowState::fromArray($workflow->getInternalState())->isCompleted());
         self::assertTrue($workflow->isActive());
     }
 
