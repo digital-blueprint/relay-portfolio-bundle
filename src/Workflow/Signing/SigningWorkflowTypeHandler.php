@@ -198,9 +198,6 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
 
     public function canUse(WorkflowData $workflow): bool
     {
-        if (($workflow->getInternalState()['version'] ?? null) !== SigningWorkflowState::VERSION) {
-            return false;
-        }
         $personId = $this->persons->getCurrentPersonIdentifier();
         if ($personId === null) {
             return false;
@@ -293,7 +290,7 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
 
     public function getExpectedTasks(WorkflowData $workflow): array
     {
-        if (!$workflow->isActive() || ($workflow->getInternalState()['version'] ?? null) !== SigningWorkflowState::VERSION) {
+        if (!$workflow->isActive()) {
             return [];
         }
         $iteration = SigningWorkflowState::fromArray($workflow->getInternalState())->getCurrentIteration();

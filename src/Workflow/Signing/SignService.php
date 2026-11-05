@@ -97,9 +97,8 @@ class SignService implements SignServiceInterface
         if ($workflow === null || $workflow->getType() !== SigningWorkflowTypeHandler::TYPE) {
             return null;
         }
-        $state = $workflow->getInternalState();
+        $state = SigningWorkflowState::fromArray($workflow->getInternalState());
 
-        return ($state['version'] ?? null) === SigningWorkflowState::VERSION
-            && ($state['signingProcessId'] ?? null) === self::PROCESS_ID ? $workflow : null;
+        return $state->signingProcessId === self::PROCESS_ID ? $workflow : null;
     }
 }
