@@ -1,0 +1,11 @@
+signing_debug:
+    name: 'Signing debug'
+    description: 'Create a fresh sample signing workflow with a document and an attachment. All participants use your email address.'
+    state:
+        ready: 'Ready'
+        ready_description: 'Use the action to create a fresh signing workflow. You can repeat this as often as needed.'
+    action:
+        create: 'Create signing workflow'
+    message:
+        created: 'Signing workflow created'
+        created_description: 'Created signing workflow %id%.'

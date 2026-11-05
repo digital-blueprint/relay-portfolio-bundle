@@ -1,0 +1,11 @@
+signing_debug:
+    name: 'Signatur-Debugging'
+    description: 'Einen neuen Beispiel-Signaturworkflow mit einem Dokument und einem Anhang erstellen. Alle Beteiligten verwenden Ihre E-Mail-Adresse.'
+    state:
+        ready: 'Bereit'
+        ready_description: 'Verwenden Sie die Aktion, um einen neuen Signaturworkflow zu erstellen. Sie können dies beliebig oft wiederholen.'
+    action:
+        create: 'Signaturworkflow erstellen'
+    message:
+        created: 'Signaturworkflow erstellt'
+        created_description: 'Signaturworkflow %id% wurde erstellt.'
