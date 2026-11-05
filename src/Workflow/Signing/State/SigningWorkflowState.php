@@ -108,8 +108,8 @@ final class SigningWorkflowState
             'iterations' => array_map(static fn (SigningIteration $iteration): array => $iteration->toArray(), $this->iterations),
             'description' => $this->description,
             'referenceId' => $this->referenceId,
-            'expirationDate' => $this->expirationDate?->format('Y-m-d\TH:i:s.uP'),
-            'retrievedAt' => $this->retrievedAt?->format('Y-m-d\TH:i:s.uP'),
+            'expirationDate' => $this->expirationDate?->format('Y-m-d\TH:i:s.vP'),
+            'retrievedAt' => $this->retrievedAt?->format('Y-m-d\TH:i:s.vP'),
             'cancelledByEmail' => $this->cancelledByEmail,
             'cancelledByUserId' => $this->cancelledByUserId,
         ];

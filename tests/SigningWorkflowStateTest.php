@@ -41,7 +41,7 @@ class SigningWorkflowStateTest extends TestCase
         $state->iterations[1]->signedDocumentFileId = 'final-result';
         $state->iterations[1]->signedDocumentFilename = 'final-signed.pdf';
         $state->status = SignJobState::FINISHED_SUCCESS;
-        $state->retrievedAt = new \DateTimeImmutable('2026-11-03T12:00:00.123456+01:00');
+        $state->retrievedAt = new \DateTimeImmutable('2026-11-03T12:00:00.123+01:00');
 
         $data = json_decode(json_encode($state->toArray(), JSON_THROW_ON_ERROR), true, flags: JSON_THROW_ON_ERROR);
         self::assertEquals($state, SigningWorkflowState::fromArray($data));

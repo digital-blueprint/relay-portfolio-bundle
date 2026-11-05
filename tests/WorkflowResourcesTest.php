@@ -47,6 +47,7 @@ class WorkflowResourcesTest extends AbstractTestCase
         self::assertStringContainsString('guest@example.com', $handler->getName($workflow, 'de'));
         $description = $handler->getDescription($workflow, 'de');
         self::assertStringContainsString('Please sign the contract.', $description);
+        self::assertStringContainsString('Workflow-ID: wf-signing.', $description);
         self::assertStringContainsString('Freigebende Person: Approver (approver@example.com).', $description);
         self::assertStringContainsString('Guest Example', $description);
         self::assertStringContainsString('guest@example.com', $description);
