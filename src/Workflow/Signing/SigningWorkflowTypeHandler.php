@@ -36,8 +36,11 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
     public const ACTION_FIRST_SIGNATURE = 'first-signature';
     public const ACTION_SECOND_SIGNATURE = 'second-signature';
     public const ACTION_VIEW_DOCUMENT = 'view-document';
+    public const ACTION_VIEW_FIRST_SIGNED_DOCUMENT = 'view-first-signed-document';
+    public const ACTION_VIEW_FINAL_DOCUMENT = 'view-final-document';
     public const ACTION_VIEW_ATTACHMENT_PREFIX = 'view-attachment-';
     public const RENDER_DOCUMENT = 'document';
+    public const RENDER_SIGNED_DOCUMENT_PREFIX = 'signed-document-';
     public const RENDER_ATTACHMENT_PREFIX = 'attachment-';
 
     private readonly Translator $translator;
@@ -251,6 +254,18 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
             );
         }
 
+        foreach ($state->iterations as $iteration) {
+            if ($iteration->signedDocumentFileId !== null) {
+                $first = $iteration->number === 0;
+                $document = $this->getSignedDocument($state, (string) $iteration->number);
+                $actions[] = new Action(
+                    $first ? self::ACTION_VIEW_FIRST_SIGNED_DOCUMENT : self::ACTION_VIEW_FINAL_DOCUMENT,
+                    $this->translator->trans('signing_workflow.action.'.($first ? 'view_first_signed_document' : 'view_final_document'), locale: $lang),
+                    description: $this->translator->trans('signing_workflow.action.file_description', ['%filename%' => $document['filename']], locale: $lang),
+                );
+            }
+        }
+
         if ($workflow->isActive() && !$state->status->isFinal()) {
             $actions[] = new Action(self::ACTION_SAP_CANCEL, $this->translator->trans('signing_workflow.action.sap_cancel', locale: $lang));
             $iteration = $state->getCurrentIteration();
@@ -262,7 +277,7 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
                 );
             }
         }
-        if ($state->status === SignJobState::FINISHED_SUCCESS) {
+        if ($state->status === SignJobState::FINISHED_SUCCESS && $state->retrievedAt === null) {
             $actions[] = new Action(self::ACTION_SAP_RETRIEVE, $this->translator->trans('signing_workflow.action.sap_retrieve', locale: $lang));
         }
 
@@ -271,6 +286,15 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
 
     public function handleAction(WorkflowData $workflow, string $action, array $payload, string $lang): WorkflowActionResult
     {
+        if ($action === self::ACTION_VIEW_FIRST_SIGNED_DOCUMENT || $action === self::ACTION_VIEW_FINAL_DOCUMENT) {
+            $number = $action === self::ACTION_VIEW_FIRST_SIGNED_DOCUMENT ? '0' : '1';
+            $this->getSignedDocument(SigningWorkflowState::fromArray($workflow->getInternalState()), $number);
+
+            return new WorkflowActionResult(
+                internalState: $workflow->getInternalState(),
+                url: $this->helper->getSignedRenderUrl($workflow->getId(), self::RENDER_SIGNED_DOCUMENT_PREFIX.$number),
+            );
+        }
         if ($action === self::ACTION_SAP_RETRIEVE) {
             return $this->recordRetrieval($workflow);
         }
@@ -319,10 +343,7 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
             $state->status = SignJobState::FINISHED_SUCCESS;
         }
 
-        return new WorkflowActionResult(
-            internalState: $state->toArray(),
-            close: $state->status === SignJobState::FINISHED_SUCCESS ? true : null,
-        );
+        return new WorkflowActionResult(internalState: $state->toArray());
     }
 
     public function recordRetrieval(WorkflowData $workflow): WorkflowActionResult
@@ -333,7 +354,10 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
         }
         $state->retrievedAt = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
 
-        return new WorkflowActionResult(internalState: $state->toArray());
+        return new WorkflowActionResult(
+            internalState: $state->toArray(),
+            close: $workflow->isActive() ? true : null,
+        );
     }
 
     public function cancel(WorkflowData $workflow, string $email): WorkflowActionResult
@@ -389,6 +413,8 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
         $state = SigningWorkflowState::fromArray($workflow->getInternalState());
         if ($renderId === self::RENDER_DOCUMENT) {
             $document = $state->getCurrentDocument();
+        } elseif (str_starts_with($renderId, self::RENDER_SIGNED_DOCUMENT_PREFIX)) {
+            $document = $this->getSignedDocument($state, substr($renderId, strlen(self::RENDER_SIGNED_DOCUMENT_PREFIX)));
         } elseif (str_starts_with($renderId, self::RENDER_ATTACHMENT_PREFIX)) {
             $document = $this->getAttachment($state, substr($renderId, strlen(self::RENDER_ATTACHMENT_PREFIX)));
         } else {
@@ -397,6 +423,21 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
         $stream = $this->helper->getFiles($workflow->getId())->download($document['fileId'])->getFileStream();
 
         return new RenderResult($stream->getContents(), 'application/pdf');
+    }
+
+    /** @return array{fileId: string, filename: string} */
+    private function getSignedDocument(SigningWorkflowState $state, string $number): array
+    {
+        foreach ($state->iterations as $iteration) {
+            if ((string) $iteration->number === $number && $iteration->signedDocumentFileId !== null) {
+                return [
+                    'fileId' => $iteration->signedDocumentFileId,
+                    'filename' => $iteration->signedDocumentFilename ?? $state->documentToSignFilename,
+                ];
+            }
+        }
+
+        throw new NotFoundHttpException('Signed document is not available for this signing iteration.');
     }
 
     /** @return array{fileId: string, filename: string} */

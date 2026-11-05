@@ -328,7 +328,7 @@ class SigningWorkflowTest extends AbstractTestCase
         self::assertFalse($this->workflows->canUse($workflow));
     }
 
-    public function testSignatureActionsAdvanceTasksAndCloseOnSuccess(): void
+    public function testSignatureActionsAdvanceTasksAndCloseOnRetrieval(): void
     {
         $workflow = $this->create();
         $state = SigningWorkflowState::fromArray($workflow->getInternalState());
@@ -337,6 +337,8 @@ class SigningWorkflowTest extends AbstractTestCase
         $handler = $this->container->get(SigningWorkflowTypeHandler::class);
         $actionIds = fn (): array => array_map(static fn ($action): string => $action->getId(), $handler->getAvailableActions($this->data($workflow), 'en'));
         self::assertContains(SigningWorkflowTypeHandler::ACTION_FIRST_SIGNATURE, $actionIds());
+        self::assertNotContains(SigningWorkflowTypeHandler::ACTION_VIEW_FIRST_SIGNED_DOCUMENT, $actionIds());
+        self::assertNotContains(SigningWorkflowTypeHandler::ACTION_VIEW_FINAL_DOCUMENT, $actionIds());
         self::assertNotContains(SigningWorkflowTypeHandler::ACTION_SECOND_SIGNATURE, $actionIds());
         $this->workflows->handleAction($workflow->getId(), SigningWorkflowTypeHandler::ACTION_FIRST_SIGNATURE, [], 'en');
         $state = SigningWorkflowState::fromArray($workflow->getInternalState());
@@ -349,6 +351,8 @@ class SigningWorkflowTest extends AbstractTestCase
         self::assertNull($workflow->getInternalState()['retrievedAt']);
         self::assertNull($this->workflows->getTask($firstTask));
         self::assertNotNull($this->workflows->getTask($secondTask));
+        self::assertContains(SigningWorkflowTypeHandler::ACTION_VIEW_FIRST_SIGNED_DOCUMENT, $actionIds());
+        self::assertNotContains(SigningWorkflowTypeHandler::ACTION_VIEW_FINAL_DOCUMENT, $actionIds());
         self::assertNotContains(SigningWorkflowTypeHandler::ACTION_FIRST_SIGNATURE, $actionIds());
         self::assertContains(SigningWorkflowTypeHandler::ACTION_SECOND_SIGNATURE, $actionIds());
         $this->workflows->handleAction($workflow->getId(), SigningWorkflowTypeHandler::ACTION_SECOND_SIGNATURE, [], 'en');
@@ -358,10 +362,18 @@ class SigningWorkflowTest extends AbstractTestCase
         foreach ([$firstFileId, $state->iterations[1]->signedDocumentFileId] as $fileId) {
             self::assertSame(SigningTestUtils::pdf()->getContent(), $files->download($workflow->getId(), $fileId)->getFileStream()->getContents());
         }
+        foreach ([SigningWorkflowTypeHandler::ACTION_VIEW_FIRST_SIGNED_DOCUMENT, SigningWorkflowTypeHandler::ACTION_VIEW_FINAL_DOCUMENT] as $number => $action) {
+            self::assertContains($action, $actionIds());
+            $result = $this->workflows->handleAction($workflow->getId(), $action, [], 'en');
+            self::assertTrue($this->container->get(\Symfony\Component\HttpFoundation\UriSigner::class)->check($result->getUrl()));
+            parse_str(parse_url($result->getUrl(), PHP_URL_QUERY), $query);
+            self::assertSame(SigningWorkflowTypeHandler::RENDER_SIGNED_DOCUMENT_PREFIX.$number, $query['renderId']);
+            self::assertSame(SigningTestUtils::pdf()->getContent(), $this->workflows->getRenderResponse($workflow, $query['renderId'], 'en')->getHtml());
+        }
         self::assertNull($this->workflows->getTask($secondTask));
         self::assertNotContains(SigningWorkflowTypeHandler::ACTION_SECOND_SIGNATURE, $actionIds());
-        self::assertFalse($workflow->isActive());
-        self::assertNotNull($workflow->getClosedAt());
+        self::assertTrue($workflow->isActive());
+        self::assertNull($workflow->getClosedAt());
         self::assertSame(SignJobState::FINISHED_SUCCESS, $this->sign->getJobState($workflow->getId(), 'EMAIL')->getState());
         self::assertSame('Waiting for SAP to retrieve', $handler->getStatusDisplay($this->data($workflow), 'en')->getLabel());
         self::assertStringContainsString('Workflow ID: '.$workflow->getId(), $handler->getStatusDisplay($this->data($workflow), 'en')->getDescription());
@@ -370,6 +382,9 @@ class SigningWorkflowTest extends AbstractTestCase
         self::assertContains(SigningWorkflowTypeHandler::ACTION_SAP_RETRIEVE, $actionIds());
         $this->workflows->handleAction($workflow->getId(), SigningWorkflowTypeHandler::ACTION_SAP_RETRIEVE, [], 'en');
         self::assertNotNull($workflow->getInternalState()['retrievedAt']);
+        self::assertNotContains(SigningWorkflowTypeHandler::ACTION_SAP_RETRIEVE, $actionIds());
+        self::assertFalse($workflow->isActive());
+        self::assertNotNull($workflow->getClosedAt());
         self::assertSame('Transferred to SAP', $handler->getStatusDisplay($this->data($workflow), 'en')->getLabel());
         $response = $this->controller->getDocument($workflow->getId(), $this->request());
         self::assertSame(200, $response->getStatusCode());
@@ -378,16 +393,17 @@ class SigningWorkflowTest extends AbstractTestCase
         $id = $workflow->getId();
         $this->container->get('doctrine.orm.dbp_relay_portfolio_bundle_entity_manager')->clear();
         $workflow = $this->workflows->getWorkflow($id);
+        $closedAt = $workflow->getClosedAt();
         $retrievedAt = $workflow->getInternalState()['retrievedAt'];
         self::assertNotNull($retrievedAt);
         self::assertSame('Transferred to SAP', $handler->getStatusDisplay($this->data($workflow), 'en')->getLabel());
         self::assertSame('An SAP übertragen', $handler->getStatusDisplay($this->data($workflow), 'de')->getLabel());
         self::assertSame(200, $this->controller->getDocument($id, $this->request())->getStatusCode());
         self::assertGreaterThan(new \DateTimeImmutable($retrievedAt), new \DateTimeImmutable($workflow->getInternalState()['retrievedAt']));
-        $retrievedAt = $workflow->getInternalState()['retrievedAt'];
-        $this->workflows->handleAction($id, SigningWorkflowTypeHandler::ACTION_SAP_RETRIEVE, [], 'en');
-        self::assertGreaterThan(new \DateTimeImmutable($retrievedAt), new \DateTimeImmutable($workflow->getInternalState()['retrievedAt']));
+        self::assertSame($closedAt, $workflow->getClosedAt());
         self::assertFalse($workflow->isActive());
+        self::assertContains(SigningWorkflowTypeHandler::ACTION_VIEW_FIRST_SIGNED_DOCUMENT, $actionIds());
+        self::assertContains(SigningWorkflowTypeHandler::ACTION_VIEW_FINAL_DOCUMENT, $actionIds());
     }
 
     #[DataProvider('invalidJobs')]

@@ -18,6 +18,8 @@ signing_workflow:
         sap_cancel: 'SAP cancel'
         sap_retrieve: 'SAP retrieve'
         view_document: 'Arbeitsvertrag ansehen'
+        view_first_signed_document: 'Erstes signiertes Dokument ansehen'
+        view_final_document: 'Finales signiertes Dokument ansehen'
         view_attachment: 'Anhang ansehen: %filename%'
         file_description: 'Dateiname: %filename%'
         delete: 'Workflow löschen (Test)'
