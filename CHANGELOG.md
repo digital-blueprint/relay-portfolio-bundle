@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.6
+
+* Initial signing workflow integration
+
 ## v0.1.5
 
 * Initial blob integration
