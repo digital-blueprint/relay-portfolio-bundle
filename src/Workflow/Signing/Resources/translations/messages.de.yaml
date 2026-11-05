@@ -3,11 +3,15 @@ signing_workflow:
     description: 'Signieren Sie ein PDF-Dokument in zwei Freigabeschritten.'
     external_signer: 'Externe unterzeichnende Person: %signer%.'
     state:
+        cancelled: 'In SAP abgebrochen'
+        cancelled_desc: 'Der Signaturworkflow wurde in SAP abgebrochen.'
+        cancelled_by_desc: 'Der Signaturworkflow wurde in SAP abgebrochen (von %email%).'
         completed: 'Abgeschlossen'
         completed_desc: 'Alle %total% Signatur(en) wurden abgeschlossen.'
         pending: 'Ausstehend'
         pending_desc: '%signed% / %total% Signatur(en) abgeschlossen'
     action:
+        sap_cancel: 'SAP cancel'
         view_document: 'Arbeitsvertrag ansehen'
         view_attachment: 'Anhang ansehen: %filename%'
         file_description: 'Dateiname: %filename%'

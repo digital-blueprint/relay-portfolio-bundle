@@ -139,7 +139,7 @@ class SigningWorkflowTest extends AbstractTestCase
         $em = $this->container->get('doctrine.orm.dbp_relay_portfolio_bundle_entity_manager');
         $em->clear();
         self::assertSame('process49', $this->sign->resolveProcessId($id));
-        self::assertSame(SignJobState::ACTIVE, (new SignService($this->workflows))->getJobState($id, 'EMAIL')->getState());
+        self::assertSame(SignJobState::ACTIVE, (new SignService($this->workflows, $this->container->get(SigningWorkflowTypeHandler::class)))->getJobState($id, 'EMAIL')->getState());
         $workflow = $this->workflows->getWorkflow($id);
         $state = SigningWorkflowState::fromArray($workflow->getInternalState());
         $state->status = SignJobState::FINISHED_FAILED;
@@ -175,6 +175,60 @@ class SigningWorkflowTest extends AbstractTestCase
         $state->iterations[0]->signedDocumentFileId = $fileId;
         $workflow->setInternalState($state->toArray());
         self::assertSame($signedPdf, $this->workflows->getRenderResponse($workflow, SigningWorkflowTypeHandler::RENDER_DOCUMENT, 'en')->getHtml());
+    }
+
+    private function cancelRequest(string $email = 'approver@example.com', string $classifier = 'EMAIL'): Request
+    {
+        $user = SigningTestUtils::jobDescription()['constituent'];
+        $user['name'] = $email;
+        $user['classifier'] = $classifier;
+        $request = new Request(content: json_encode($user, JSON_THROW_ON_ERROR));
+        $request->headers->set('Authorization', 'Basic '.base64_encode('svc_user:svc_pass'));
+
+        return $request;
+    }
+
+    public function testCancellationPersistsPersonIdAndClosesWorkflowAndRemovesTasks(): void
+    {
+        $workflow = $this->create();
+        $id = $workflow->getId();
+        $state = SigningWorkflowState::fromArray($workflow->getInternalState());
+        $taskId = $state->iterations[0]->invitees[0]->id;
+        $response = $this->controller->cancelJob($id, $this->cancelRequest());
+        self::assertSame(200, $response->getStatusCode(), (string) $response->getContent());
+        self::assertSame(['state' => 'FINISHED_WF_CANCELLED'], json_decode($response->getContent(), true));
+
+        $em = $this->container->get('doctrine.orm.dbp_relay_portfolio_bundle_entity_manager');
+        $em->clear();
+        $workflow = $this->workflows->getWorkflow($id);
+        self::assertFalse($workflow->isActive());
+        self::assertNotNull($workflow->getClosedAt());
+        $closedAt = $workflow->getClosedAt();
+        self::assertSame('approver-id', $workflow->getInternalState()['cancelledByUserId']);
+        self::assertSame('approver@example.com', $workflow->getInternalState()['cancelledByEmail']);
+        self::assertSame(SignJobState::FINISHED_WF_CANCELLED, $this->sign->getJobState($id, 'EMAIL')->getState());
+        $handler = $this->container->get(SigningWorkflowTypeHandler::class);
+        $display = $handler->getStatusDisplay($this->data($workflow), 'en');
+        self::assertSame('Cancelled in SAP', $display->getLabel());
+        self::assertSame('In SAP abgebrochen', $handler->getStatusDisplay($this->data($workflow), 'de')->getLabel());
+        self::assertSame('Der Signaturworkflow wurde in SAP abgebrochen (von approver@example.com).', $handler->getStatusDisplay($this->data($workflow), 'de')->getDescription());
+        self::assertNull($this->workflows->getTask($taskId));
+        self::assertNotNull($this->container->get(WorkflowFileService::class)->get($id, $state->documentToSignFileId));
+
+        self::assertSame(200, $this->controller->cancelJob($id, $this->cancelRequest('owner@example.com'))->getStatusCode());
+        self::assertSame($closedAt, $workflow->getClosedAt());
+        self::assertSame('approver-id', $workflow->getInternalState()['cancelledByUserId']);
+        self::assertSame('approver@example.com', $workflow->getInternalState()['cancelledByEmail']);
+    }
+
+    public function testCancellationRejectsNonEmailClassifier(): void
+    {
+        $workflow = $this->create();
+        $state = $workflow->getInternalState();
+        $response = $this->controller->cancelJob($workflow->getId(), $this->cancelRequest('approver-id', 'ID'));
+        self::assertSame(400, $response->getStatusCode());
+        self::assertSame(['error' => 'Only classifier "EMAIL" is supported.'], json_decode($response->getContent(), true));
+        self::assertSame($state, $workflow->getInternalState());
     }
 
     public function testViewAttachmentActionsUseSignedUrlsWithoutChangingSigningState(): void
@@ -367,13 +421,18 @@ class SigningWorkflowTest extends AbstractTestCase
     {
         $workflow = $this->create();
         self::assertSame(404, $this->controller->getDocument($workflow->getId(), $this->request())->getStatusCode());
-        $cancel = new Request(content: json_encode(SigningTestUtils::jobDescription()['constituent']));
-        $cancel->headers->set('Authorization', 'Basic '.base64_encode('svc_user:svc_pass'));
-        self::assertSame(501, $this->controller->cancelJob($workflow->getId(), $cancel)->getStatusCode());
         self::assertSame(SignJobState::ACTIVE, $this->sign->getJobState($workflow->getId(), 'EMAIL')->getState());
         $handler = $this->container->get(SigningWorkflowTypeHandler::class);
-        self::assertSame([SigningWorkflowTypeHandler::ACTION_DELETE, SigningWorkflowTypeHandler::ACTION_VIEW_DOCUMENT], array_map(static fn ($action): string => $action->getId(), $handler->getAvailableActions($this->data($workflow), 'en')));
+        $actions = $handler->getAvailableActions($this->data($workflow), 'en');
+        self::assertSame([SigningWorkflowTypeHandler::ACTION_DELETE, SigningWorkflowTypeHandler::ACTION_VIEW_DOCUMENT, SigningWorkflowTypeHandler::ACTION_SAP_CANCEL], array_map(static fn ($action): string => $action->getId(), $actions));
+        self::assertSame('SAP cancel', $actions[2]->getLabel());
         self::assertStringContainsString('0 / 2', $handler->getStatusDisplay($this->data($workflow), 'en')->getDescription());
+        $this->workflows->handleAction($workflow->getId(), SigningWorkflowTypeHandler::ACTION_SAP_CANCEL, [], 'en');
+        self::assertFalse($workflow->isActive());
+        self::assertSame('owner@example.com', $workflow->getInternalState()['cancelledByEmail']);
+        self::assertSame('owner-id', $workflow->getInternalState()['cancelledByUserId']);
+        self::assertSame(SignJobState::FINISHED_WF_CANCELLED, $this->sign->getJobState($workflow->getId(), 'EMAIL')->getState());
+        self::assertSame([], $this->workflows->getTasksForWorkflow($workflow->getId(), 1, 10));
         $this->workflows->softDeleteWorkflow($workflow->getId());
         self::assertNull($this->sign->resolveProcessId($workflow->getId()));
         $this->workflows->cleanupAll();

@@ -182,28 +182,38 @@ class WorkflowService implements LoggerAwareInterface
      */
     public function handleAction(string $workflowId, string $action, array $payload, string $lang): WorkflowActionResult
     {
-        $workflow = $this->em->getRepository(WorkflowPersistence::class)->find($workflowId);
-        if ($workflow === null || $workflow->isDeleted()) {
+        return $this->updateWorkflow($workflowId, function (WorkflowData $workflowData) use ($workflowId, $action, $payload, $lang): WorkflowActionResult {
+            $handler = $this->workflowTypeHandlerRegistry->getHandler($workflowData->getType());
+            $availableActions = $handler->getAvailableActions($workflowData, $lang);
+            $availableActionIds = array_map(fn ($a) => $a->getId(), $availableActions);
+            if (!in_array($action, $availableActionIds, true)) {
+                throw new BadRequestHttpException(sprintf(
+                    "Action '%s' is not available for workflow '%s'. Available: %s",
+                    $action,
+                    $workflowId,
+                    implode(', ', $availableActionIds)
+                ));
+            }
+
+            return $handler->handleAction($workflowData, $action, $payload, $lang);
+        });
+    }
+
+    /**
+     * Applies a trusted service update and reconciles tasks in one transaction.
+     * Callers must enforce their own authorization before using this method.
+     *
+     * @param callable(WorkflowData): WorkflowActionResult $update
+     */
+    public function updateWorkflow(string $workflowId, callable $update): WorkflowActionResult
+    {
+        $workflow = $this->getWorkflow($workflowId);
+        if ($workflow === null) {
             throw new NotFoundHttpException(sprintf("Workflow '%s' not found.", $workflowId));
         }
 
-        $handler = $this->workflowTypeHandlerRegistry->getHandler($workflow->getType());
-        $workflowData = $this->toWorkflowData($workflow);
-
-        $availableActions = $handler->getAvailableActions($workflowData, $lang);
-        $availableActionIds = array_map(fn ($a) => $a->getId(), $availableActions);
-        if (!in_array($action, $availableActionIds, true)) {
-            throw new BadRequestHttpException(sprintf(
-                "Action '%s' is not available for workflow '%s'. Available: %s",
-                $action,
-                $workflowId,
-                implode(', ', $availableActionIds)
-            ));
-        }
-
-        $result = $handler->handleAction($workflowData, $action, $payload, $lang);
-
-        $this->em->wrapInTransaction(function () use ($workflow, $result): void {
+        return $this->em->wrapInTransaction(function () use ($workflow, $update): WorkflowActionResult {
+            $result = $update($this->toWorkflowData($workflow));
             $now = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
 
             $workflow->setInternalState($result->getInternalState());
@@ -216,9 +226,9 @@ class WorkflowService implements LoggerAwareInterface
             } else {
                 $this->reconcileTasks($workflow);
             }
-        });
 
-        return $result;
+            return $result;
+        });
     }
 
     // -------------------------------------------------------------------------

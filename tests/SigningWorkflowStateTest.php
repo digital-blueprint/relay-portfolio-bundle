@@ -48,19 +48,20 @@ class SigningWorkflowStateTest extends TestCase
 
         $state = $this->createState();
         $state->status = SignJobState::FINISHED_WF_CANCELLED;
-        $state->cancelledBy = 'owner@example.com';
+        $state->cancelledByEmail = 'owner@example.com';
+        $state->cancelledByUserId = 'user-owner';
         self::assertEquals($state, SigningWorkflowState::fromArray($state->toArray()));
     }
 
     public function testOptionalFields(): void
     {
         $data = $this->createState()->toArray();
-        foreach (['attachments', 'description', 'referenceId', 'expirationDate', 'retrievedAt', 'cancelledBy'] as $field) {
+        foreach (['attachments', 'description', 'referenceId', 'expirationDate', 'retrievedAt', 'cancelledByEmail', 'cancelledByUserId'] as $field) {
             unset($data[$field]);
         }
         $state = SigningWorkflowState::fromArray($data);
         self::assertSame([], $state->attachments);
-        foreach (['description', 'referenceId', 'expirationDate', 'retrievedAt', 'cancelledBy'] as $field) {
+        foreach (['description', 'referenceId', 'expirationDate', 'retrievedAt', 'cancelledByEmail', 'cancelledByUserId'] as $field) {
             self::assertNull($state->$field);
         }
     }

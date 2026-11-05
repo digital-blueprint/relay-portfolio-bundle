@@ -3,11 +3,15 @@ signing_workflow:
     description: 'Sign a PDF document in two approval steps.'
     external_signer: 'External signer: %signer%.'
     state:
+        cancelled: 'Cancelled in SAP'
+        cancelled_desc: 'The signing workflow was cancelled in SAP.'
+        cancelled_by_desc: 'The signing workflow was cancelled in SAP (by %email%).'
         completed: 'Completed'
         completed_desc: 'All %total% signature(s) have been completed.'
         pending: 'Pending'
         pending_desc: '%signed% / %total% signature(s) completed'
     action:
+        sap_cancel: 'SAP cancel'
         view_document: 'View document'
         view_attachment: 'View attachment: %filename%'
         file_description: 'Filename: %filename%'

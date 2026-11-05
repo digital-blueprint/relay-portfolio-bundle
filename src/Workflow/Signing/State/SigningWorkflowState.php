@@ -31,7 +31,8 @@ final class SigningWorkflowState
         public ?\DateTimeImmutable $expirationDate = null,
         public SignJobState $status = SignJobState::ACTIVE,
         public ?\DateTimeImmutable $retrievedAt = null,
-        public ?string $cancelledBy = null,
+        public ?string $cancelledByEmail = null,
+        public ?string $cancelledByUserId = null,
         public ?string $constituentDisplayName = null,
     ) {
     }
@@ -85,7 +86,8 @@ final class SigningWorkflowState
             expirationDate: isset($data['expirationDate']) ? new \DateTimeImmutable($data['expirationDate']) : null,
             status: SignJobState::from($data['status']),
             retrievedAt: isset($data['retrievedAt']) ? new \DateTimeImmutable($data['retrievedAt']) : null,
-            cancelledBy: $data['cancelledBy'] ?? null,
+            cancelledByEmail: $data['cancelledByEmail'] ?? null,
+            cancelledByUserId: $data['cancelledByUserId'] ?? null,
             constituentDisplayName: $data['constituentDisplayName'] ?? null,
         );
     }
@@ -107,7 +109,8 @@ final class SigningWorkflowState
             'referenceId' => $this->referenceId,
             'expirationDate' => $this->expirationDate?->format('Y-m-d\TH:i:s.uP'),
             'retrievedAt' => $this->retrievedAt?->format('Y-m-d\TH:i:s.uP'),
-            'cancelledBy' => $this->cancelledBy,
+            'cancelledByEmail' => $this->cancelledByEmail,
+            'cancelledByUserId' => $this->cancelledByUserId,
         ];
     }
 }

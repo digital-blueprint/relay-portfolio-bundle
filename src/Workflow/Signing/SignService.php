@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Dbp\Relay\PortfolioBundle\Workflow\Signing;
 
+use Dbp\Relay\PortfolioBundle\Handler\WorkflowData;
 use Dbp\Relay\PortfolioBundle\Persistence\WorkflowPersistence;
 use Dbp\Relay\PortfolioBundle\Service\WorkflowService;
+use Dbp\Relay\PortfolioBundle\SignApi\SignClassifier;
 use Dbp\Relay\PortfolioBundle\SignApi\SignException;
 use Dbp\Relay\PortfolioBundle\SignApi\SignJobDescription;
 use Dbp\Relay\PortfolioBundle\SignApi\SignJobState;
@@ -23,8 +25,10 @@ class SignService implements SignServiceInterface
 {
     public const PROCESS_ID = 'process49';
 
-    public function __construct(private readonly WorkflowService $workflows)
-    {
+    public function __construct(
+        private readonly WorkflowService $workflows,
+        private readonly SigningWorkflowTypeHandler $handler,
+    ) {
     }
 
     public function startProcess(string $processId, SignJobDescription $jobDescription, UploadedFile $documentToSign, array $attachments): string
@@ -65,7 +69,13 @@ class SignService implements SignServiceInterface
             throw SignException::jobNotFound($processInstanceId);
         }
 
-        throw new SignException('Signing cancellation is not implemented yet.', Response::HTTP_NOT_IMPLEMENTED);
+        if ($requestedBy->getClassifier() !== SignClassifier::EMAIL) {
+            throw new SignException('Only classifier "EMAIL" is supported.');
+        }
+
+        $result = $this->workflows->updateWorkflow($processInstanceId, fn (WorkflowData $workflow) => $this->handler->cancel($workflow, $requestedBy->getName()));
+
+        return SigningWorkflowState::fromArray($result->getInternalState())->status;
     }
 
     public function getDocument(string $processInstanceId): ?string

@@ -30,6 +30,7 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
 {
     public const TYPE = 'signing';
     public const ACTION_DELETE = 'delete';
+    public const ACTION_SAP_CANCEL = 'sap-cancel';
     public const ACTION_VIEW_DOCUMENT = 'view-document';
     public const ACTION_VIEW_ATTACHMENT_PREFIX = 'view-attachment-';
     public const RENDER_DOCUMENT = 'document';
@@ -175,6 +176,16 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
     public function getStatusDisplay(WorkflowData $workflow, string $lang): StatusDisplay
     {
         $state = SigningWorkflowState::fromArray($workflow->getInternalState());
+        if ($state->status === SignJobState::FINISHED_WF_CANCELLED) {
+            return new StatusDisplay(
+                $this->translator->trans('signing_workflow.state.cancelled', locale: $lang),
+                $this->translator->trans(
+                    'signing_workflow.state.'.($state->cancelledByEmail !== null ? 'cancelled_by_desc' : 'cancelled_desc'),
+                    ['%email%' => $state->cancelledByEmail ?? ''],
+                    locale: $lang,
+                ),
+            );
+        }
         $total = count($state->iterations);
         $signed = count(array_filter($state->iterations, static fn (SigningIteration $iteration): bool => $iteration->signedDocumentFileId !== null));
         $key = $state->status === SignJobState::FINISHED_SUCCESS ? 'completed' : 'pending';
@@ -232,11 +243,18 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
             );
         }
 
+        if ($workflow->isActive() && !$state->status->isFinal()) {
+            $actions[] = new Action(self::ACTION_SAP_CANCEL, $this->translator->trans('signing_workflow.action.sap_cancel', locale: $lang));
+        }
+
         return $actions;
     }
 
     public function handleAction(WorkflowData $workflow, string $action, array $payload, string $lang): WorkflowActionResult
     {
+        if ($action === self::ACTION_SAP_CANCEL) {
+            return $this->cancel($workflow, SigningWorkflowState::fromArray($workflow->getInternalState())->constituentEmail);
+        }
         if ($action === self::ACTION_VIEW_DOCUMENT) {
             return new WorkflowActionResult(
                 internalState: $workflow->getInternalState(),
@@ -256,6 +274,21 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
             return new WorkflowActionResult(internalState: $workflow->getInternalState(), delete: true);
         }
         throw new \RuntimeException(sprintf('Signing action "%s" is not implemented yet.', $action));
+    }
+
+    public function cancel(WorkflowData $workflow, string $email): WorkflowActionResult
+    {
+        $state = SigningWorkflowState::fromArray($workflow->getInternalState());
+        if (!$state->status->isFinal()) {
+            $state->cancelledByUserId = $this->emailResolver->resolve($email)['personId'];
+            $state->cancelledByEmail = trim($email);
+            $state->status = SignJobState::FINISHED_WF_CANCELLED;
+        }
+
+        return new WorkflowActionResult(
+            internalState: $state->toArray(),
+            close: $state->status === SignJobState::FINISHED_WF_CANCELLED && $workflow->isActive() ? true : null,
+        );
     }
 
     public function getExpectedTasks(WorkflowData $workflow): array
