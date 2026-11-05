@@ -1,7 +1,8 @@
 signing_workflow:
     name: 'Employment Contract'
-    description: 'Sign a PDF document in two approval steps.'
+    description: 'Employment contract for approval and signing.'
     external_signer: 'External signer: %signer%.'
+    approver: 'Approver: %signer%.'
     state:
         cancelled: 'Cancelled in SAP'
         cancelled_desc: 'The signing workflow was cancelled in SAP.'

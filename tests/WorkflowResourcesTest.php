@@ -33,7 +33,7 @@ class WorkflowResourcesTest extends AbstractTestCase
         $this->assertNull($service->resolveProcessId('dummy-sign-test'));
     }
 
-    public function testSigningTitleAndDescriptionIdentifyExternalSigner(): void
+    public function testSigningTitleAndDescriptionIdentifySigners(): void
     {
         $handler = $this->container->get(SigningWorkflowTypeHandler::class);
         $external = new SigningInvitee('external-task', 'guest@example.com', displayName: 'Guest Example');
@@ -47,12 +47,15 @@ class WorkflowResourcesTest extends AbstractTestCase
         self::assertStringContainsString('guest@example.com', $handler->getName($workflow, 'de'));
         $description = $handler->getDescription($workflow, 'de');
         self::assertStringContainsString('Please sign the contract.', $description);
+        self::assertStringContainsString('Freigebende Person: Approver (approver@example.com).', $description);
         self::assertStringContainsString('Guest Example', $description);
         self::assertStringContainsString('guest@example.com', $description);
 
         $external->displayName = null;
+        $state->iterations[0]->invitees[0]->displayName = null;
         $workflow = new WorkflowData('wf-signing', $handler->getType(), true, $state->toArray(), new \DateTimeImmutable());
         self::assertStringContainsString('guest@example.com', $handler->getName($workflow, 'de'));
         self::assertStringContainsString('guest@example.com', $handler->getDescription($workflow, 'de'));
+        self::assertStringContainsString('Freigebende Person: approver@example.com.', $handler->getDescription($workflow, 'de'));
     }
 }

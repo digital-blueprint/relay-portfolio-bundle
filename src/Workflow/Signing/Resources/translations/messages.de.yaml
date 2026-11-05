@@ -1,7 +1,8 @@
 signing_workflow:
     name: 'Arbeitsvertrag'
-    description: 'Signieren Sie ein PDF-Dokument in zwei Freigabeschritten.'
+    description: 'Arbeitsvertrag zur Freigabe und Unterzeichnung.'
     external_signer: 'Externe unterzeichnende Person: %signer%.'
+    approver: 'Freigebende Person: %signer%.'
     state:
         cancelled: 'In SAP abgebrochen'
         cancelled_desc: 'Der Signaturworkflow wurde in SAP abgebrochen.'

@@ -146,7 +146,7 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
     public function getName(WorkflowData $workflow, string $lang): string
     {
         $name = $this->translator->trans('signing_workflow.name', locale: $lang);
-        $identity = $this->getExternalSignerIdentity(SigningWorkflowState::fromArray($workflow->getInternalState()));
+        $identity = $this->getSignerIdentity(SigningWorkflowState::fromArray($workflow->getInternalState()), true);
 
         return $identity !== null ? $name.' — '.$identity : $name;
     }
@@ -155,21 +155,21 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
     {
         $state = SigningWorkflowState::fromArray($workflow->getInternalState());
         $description = $state->description ?? $this->translator->trans('signing_workflow.description', locale: $lang);
-        $identity = $this->getExternalSignerIdentity($state);
-        if ($identity !== null) {
-            $signerDescription = $this->translator->trans('signing_workflow.external_signer', ['%signer%' => $identity], locale: $lang);
-
-            return trim($description.' '.$signerDescription);
+        foreach (['approver' => false, 'external_signer' => true] as $key => $external) {
+            $identity = $this->getSignerIdentity($state, $external);
+            if ($identity !== null) {
+                $description = trim($description.' '.$this->translator->trans('signing_workflow.'.$key, ['%signer%' => $identity], locale: $lang));
+            }
         }
 
         return $description;
     }
 
-    private function getExternalSignerIdentity(SigningWorkflowState $state): ?string
+    private function getSignerIdentity(SigningWorkflowState $state, bool $external): ?string
     {
         foreach ($state->iterations as $iteration) {
             foreach ($iteration->invitees as $invitee) {
-                if ($invitee->isExternal()) {
+                if ($invitee->isExternal() === $external) {
                     $name = trim($invitee->displayName ?? '');
 
                     return $name !== '' && $name !== $invitee->email ? $name.' ('.$invitee->email.')' : $invitee->email;
