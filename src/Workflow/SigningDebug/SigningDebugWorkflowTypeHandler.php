@@ -104,6 +104,9 @@ class SigningDebugWorkflowTypeHandler implements WorkflowTypeHandlerInterface
         $job = SignJobDescription::fromArray([
             'constituent' => $user,
             'positionType' => 'SIGNATURE_PAGE',
+            'metaData' => [
+                'expirationDate' => (new \DateTimeImmutable('+1 week', new \DateTimeZone('UTC')))->format('Y-m-d\TH:i:s.vO'),
+            ],
             'iterationData' => [
                 ['iterationNumber' => 0, 'category' => 'APPROVAL', 'invitees' => [$user]],
                 ['iterationNumber' => 1, 'category' => 'EXTERNAL_APPROVAL', 'invitees' => [[
