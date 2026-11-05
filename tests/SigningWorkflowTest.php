@@ -18,6 +18,7 @@ use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningWorkflowState;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Symfony\Component\Uid\Uuid;
 
@@ -92,7 +93,7 @@ class SigningWorkflowTest extends AbstractTestCase
     public function testCreatesWorkflowAndOwnsUploadedFiles(): void
     {
         $job = SigningTestUtils::jobDescription();
-        $job['metaData'] = ['description' => 'Please sign', 'referenceId' => 'CASE-123', 'expirationDate' => '2000-01-01T12:00:00.000+0100'];
+        $job['metaData'] = ['description' => 'Please sign', 'referenceId' => 'CASE-123', 'expirationDate' => '2100-01-01T12:00:00.000+0100'];
         $response = $this->controller->startProcess('process49', $this->request($job, [
             'documentToSign' => SigningTestUtils::pdf('work-contract.pdf'),
             'attachments' => [SigningTestUtils::pdf('supporting.pdf')],
@@ -111,16 +112,16 @@ class SigningWorkflowTest extends AbstractTestCase
         self::assertNull($state->iterations[1]->invitees[0]->userId);
         self::assertSame('Guest', $state->iterations[1]->invitees[0]->displayName);
         self::assertSame('CASE-123', $state->referenceId);
-        self::assertSame('2000', $state->expirationDate->format('Y'));
+        self::assertSame('2100', $state->expirationDate->format('Y'));
         $jobState = json_decode($this->controller->getJobState($id, 'EMAIL', $this->request())->getContent(), true);
         self::assertSame([
             'description' => 'Please sign',
             'referenceId' => 'CASE-123',
-            'expirationDate' => '2000-01-01T12:00:00.000+01:00',
+            'expirationDate' => '2100-01-01T12:00:00.000+01:00',
         ], $jobState['jobMetaData']);
         self::assertArrayNotHasKey('externalPassword', $jobState['jobMetaData']);
         $files = $this->container->get(WorkflowFileService::class);
-        foreach ([$state->documentToSignFileId => 'work-contract.pdf', $state->attachments[0]['fileId'] => 'supporting.pdf'] as $fileId => $filename) {
+        foreach ([$state->documentToSign['fileId'] => 'work-contract.pdf', $state->attachments[0]['fileId'] => 'supporting.pdf'] as $fileId => $filename) {
             $file = $files->get($id, $fileId);
             self::assertSame('portfolio/workflows/'.$id, $file->getPrefix());
             self::assertSame($filename, $file->getFileName());
@@ -165,7 +166,7 @@ class SigningWorkflowTest extends AbstractTestCase
         self::assertArrayNotHasKey('endDate', $payload);
         self::assertArrayNotHasKey('eventType', $payload);
         $state = SigningWorkflowState::fromArray($workflow->getInternalState());
-        $state->status = SignJobState::FINISHED_FAILED;
+        $state->signingStatus = SignJobState::FINISHED_FAILED;
         $workflow->setInternalState($state->toArray());
         $em->flush();
         $payload = json_decode($this->controller->getJobState($id, 'EMAIL', $this->request())->getContent(), true);
@@ -197,7 +198,7 @@ class SigningWorkflowTest extends AbstractTestCase
         $signedPdf = "%PDF-1.4\n%Signed contract\n%%EOF";
         $fileId = $this->container->get(WorkflowFileService::class)->store($workflow->getId(), 'signed.pdf', 'application/pdf', $signedPdf);
         $state = SigningWorkflowState::fromArray($state);
-        $state->iterations[0]->signedDocumentFileId = $fileId;
+        $state->iterations[0]->signedDocument = ['fileId' => $fileId, 'filename' => 'signed.pdf'];
         $workflow->setInternalState($state->toArray());
         self::assertSame($signedPdf, $this->workflows->getRenderResponse($workflow, SigningWorkflowTypeHandler::RENDER_DOCUMENT, 'en')->getHtml());
     }
@@ -231,6 +232,9 @@ class SigningWorkflowTest extends AbstractTestCase
         $closedAt = $workflow->getClosedAt();
         self::assertSame('approver-id', $workflow->getInternalState()['cancelledByUserId']);
         self::assertSame('approver@example.com', $workflow->getInternalState()['cancelledByEmail']);
+        $cancelledAt = $workflow->getInternalState()['cancelledAt'];
+        self::assertNotNull($cancelledAt);
+        self::assertLessThanOrEqual(new \DateTimeImmutable(), new \DateTimeImmutable($cancelledAt));
         self::assertSame(SignJobState::FINISHED_WF_CANCELLED, $this->sign->getJobState($id, 'EMAIL')->getState());
         $handler = $this->container->get(SigningWorkflowTypeHandler::class);
         $display = $handler->getStatusDisplay($this->data($workflow), 'en');
@@ -238,12 +242,13 @@ class SigningWorkflowTest extends AbstractTestCase
         self::assertSame('In SAP abgebrochen', $handler->getStatusDisplay($this->data($workflow), 'de')->getLabel());
         self::assertSame('Der Signaturworkflow wurde in SAP abgebrochen (von approver@example.com).', $handler->getStatusDisplay($this->data($workflow), 'de')->getDescription());
         self::assertNull($this->workflows->getTask($taskId));
-        self::assertNotNull($this->container->get(WorkflowFileService::class)->get($id, $state->documentToSignFileId));
+        self::assertNotNull($this->container->get(WorkflowFileService::class)->get($id, $state->documentToSign['fileId']));
 
         self::assertSame(200, $this->controller->cancelJob($id, $this->cancelRequest('owner@example.com'))->getStatusCode());
-        self::assertSame($closedAt, $workflow->getClosedAt());
+        self::assertEquals($closedAt, $workflow->getClosedAt());
         self::assertSame('approver-id', $workflow->getInternalState()['cancelledByUserId']);
         self::assertSame('approver@example.com', $workflow->getInternalState()['cancelledByEmail']);
+        self::assertSame($cancelledAt, $workflow->getInternalState()['cancelledAt']);
     }
 
     public function testCancellationRejectsNonEmailClassifier(): void
@@ -269,7 +274,7 @@ class SigningWorkflowTest extends AbstractTestCase
         $this->workflows->handleAction($id, SigningWorkflowTypeHandler::ACTION_EXPIRE, [], 'en');
         $state = SigningWorkflowState::fromArray($workflow->getInternalState());
         self::assertLessThanOrEqual(new \DateTimeImmutable(), $state->expirationDate);
-        self::assertSame(SignJobState::FINISHED_TIMEOUT, $state->status);
+        self::assertSame(SignJobState::FINISHED_TIMEOUT, $state->signingStatus);
         self::assertFalse($workflow->isActive());
         self::assertSame([], $this->workflows->getTasksForWorkflow($id, 1, 10));
         $this->workflows->pingAll();
@@ -279,7 +284,7 @@ class SigningWorkflowTest extends AbstractTestCase
         self::assertSame('FINISHED_TIMEOUT', json_decode($this->controller->getJobState($id, 'EMAIL', $this->request())->getContent(), true)['state']);
         self::assertSame([], $this->workflows->getTasksForWorkflow($id, 1, 10));
         self::assertSame(404, $this->controller->getDocument($id, $this->request())->getStatusCode());
-        self::assertNotNull($this->container->get(WorkflowFileService::class)->get($id, $state->documentToSignFileId));
+        self::assertNotNull($this->container->get(WorkflowFileService::class)->get($id, $state->documentToSign['fileId']));
         self::assertSame('Abgelaufen', $this->container->get(SigningWorkflowTypeHandler::class)->getStatusDisplay($this->data($workflow), 'de')->getLabel());
         $job['metaData']['expirationDate'] = (new \DateTimeImmutable('-1 day'))->format('Y-m-d\TH:i:s.vO');
         $response = $this->controller->startProcess('process49', $this->request($job));
@@ -315,7 +320,7 @@ class SigningWorkflowTest extends AbstractTestCase
     public function testRejectsViewingDocumentAsAttachment(): void
     {
         $workflow = $this->create();
-        $fileId = $workflow->getInternalState()['documentToSignFileId'];
+        $fileId = $workflow->getInternalState()['documentToSign']['fileId'];
         $this->expectException(NotFoundHttpException::class);
         $this->container->get(SigningWorkflowTypeHandler::class)->handleAction(
             $this->data($workflow), SigningWorkflowTypeHandler::ACTION_VIEW_ATTACHMENT_PREFIX.$fileId, [], 'en',
@@ -325,7 +330,7 @@ class SigningWorkflowTest extends AbstractTestCase
     public function testRejectsRenderingDocumentAsAttachment(): void
     {
         $workflow = $this->create();
-        $fileId = $workflow->getInternalState()['documentToSignFileId'];
+        $fileId = $workflow->getInternalState()['documentToSign']['fileId'];
         $this->expectException(NotFoundHttpException::class);
         $this->workflows->getRenderResponse($workflow, SigningWorkflowTypeHandler::RENDER_ATTACHMENT_PREFIX.$fileId, 'en');
     }
@@ -399,14 +404,14 @@ class SigningWorkflowTest extends AbstractTestCase
         self::assertNotContains(SigningWorkflowTypeHandler::ACTION_SECOND_SIGNATURE, $actionIds());
         $this->workflows->handleAction($workflow->getId(), SigningWorkflowTypeHandler::ACTION_FIRST_SIGNATURE, [], 'en');
         $state = SigningWorkflowState::fromArray($workflow->getInternalState());
-        $firstFileId = $state->iterations[0]->signedDocumentFileId;
-        self::assertNotSame($state->documentToSignFileId, $firstFileId);
-        self::assertSame(SignJobState::ACTIVE, $state->status);
+        $firstFileId = $state->iterations[0]->signedDocument['fileId'];
+        self::assertNotSame($state->documentToSign['fileId'], $firstFileId);
+        self::assertSame(SignJobState::ACTIVE, $state->signingStatus);
         self::assertSame(1, $this->sign->getJobState($workflow->getId(), 'EMAIL')->toArray()['currentIteration']);
         self::assertNotContains(SigningWorkflowTypeHandler::ACTION_SAP_RETRIEVE, $actionIds());
         self::assertTrue($workflow->isActive());
         self::assertSame(404, $this->controller->getDocument($workflow->getId(), $this->request())->getStatusCode());
-        self::assertNull($workflow->getInternalState()['retrievedAt']);
+        self::assertNull($workflow->getInternalState()['lastRetrievedAt']);
         self::assertNull($this->workflows->getTask($firstTask));
         self::assertNotNull($this->workflows->getTask($secondTask));
         self::assertContains(SigningWorkflowTypeHandler::ACTION_VIEW_FIRST_SIGNED_DOCUMENT, $actionIds());
@@ -415,9 +420,9 @@ class SigningWorkflowTest extends AbstractTestCase
         self::assertContains(SigningWorkflowTypeHandler::ACTION_SECOND_SIGNATURE, $actionIds());
         $this->workflows->handleAction($workflow->getId(), SigningWorkflowTypeHandler::ACTION_SECOND_SIGNATURE, [], 'en');
         $state = SigningWorkflowState::fromArray($workflow->getInternalState());
-        self::assertNotSame($firstFileId, $state->iterations[1]->signedDocumentFileId);
+        self::assertNotSame($firstFileId, $state->iterations[1]->signedDocument['fileId']);
         $files = $this->container->get(WorkflowFileService::class);
-        foreach ([$firstFileId, $state->iterations[1]->signedDocumentFileId] as $fileId) {
+        foreach ([$firstFileId, $state->iterations[1]->signedDocument['fileId']] as $fileId) {
             self::assertSame(SigningTestUtils::pdf()->getContent(), $files->download($workflow->getId(), $fileId)->getFileStream()->getContents());
         }
         foreach ([SigningWorkflowTypeHandler::ACTION_VIEW_FIRST_SIGNED_DOCUMENT, SigningWorkflowTypeHandler::ACTION_VIEW_FINAL_DOCUMENT] as $number => $action) {
@@ -442,10 +447,10 @@ class SigningWorkflowTest extends AbstractTestCase
         self::assertSame('Waiting for SAP to retrieve', $handler->getStatusDisplay($this->data($workflow), 'en')->getLabel());
         self::assertStringContainsString('Workflow ID: '.$workflow->getId(), $handler->getDescription($this->data($workflow), 'en'));
         $this->workflows->getRenderResponse($workflow, SigningWorkflowTypeHandler::RENDER_DOCUMENT, 'en');
-        self::assertNull($workflow->getInternalState()['retrievedAt']);
+        self::assertNull($workflow->getInternalState()['lastRetrievedAt']);
         self::assertContains(SigningWorkflowTypeHandler::ACTION_SAP_RETRIEVE, $actionIds());
         $this->workflows->handleAction($workflow->getId(), SigningWorkflowTypeHandler::ACTION_SAP_RETRIEVE, [], 'en');
-        self::assertNotNull($workflow->getInternalState()['retrievedAt']);
+        self::assertNotNull($workflow->getInternalState()['lastRetrievedAt']);
         self::assertNotContains(SigningWorkflowTypeHandler::ACTION_SAP_RETRIEVE, $actionIds());
         self::assertFalse($workflow->isActive());
         self::assertNotNull($workflow->getClosedAt());
@@ -453,27 +458,114 @@ class SigningWorkflowTest extends AbstractTestCase
         $response = $this->controller->getDocument($workflow->getId(), $this->request());
         self::assertSame(200, $response->getStatusCode());
         self::assertSame('application/pdf', $response->headers->get('Content-Type'));
-        self::assertSame($files->download($workflow->getId(), $state->iterations[1]->signedDocumentFileId)->getFileStream()->getContents(), $response->getContent());
+        self::assertSame($files->download($workflow->getId(), $state->iterations[1]->signedDocument['fileId'])->getFileStream()->getContents(), $response->getContent());
         $id = $workflow->getId();
         $this->container->get('doctrine.orm.dbp_relay_portfolio_bundle_entity_manager')->clear();
         $workflow = $this->workflows->getWorkflow($id);
         $closedAt = $workflow->getClosedAt();
-        $retrievedAt = $workflow->getInternalState()['retrievedAt'];
-        self::assertNotNull($retrievedAt);
+        $lastRetrievedAt = $workflow->getInternalState()['lastRetrievedAt'];
+        self::assertNotNull($lastRetrievedAt);
         self::assertSame('Transferred to SAP', $handler->getStatusDisplay($this->data($workflow), 'en')->getLabel());
         self::assertSame('An SAP übertragen', $handler->getStatusDisplay($this->data($workflow), 'de')->getLabel());
         self::assertStringContainsString('Workflow ID: '.$id, $handler->getDescription($this->data($workflow), 'en'));
         $state = SigningWorkflowState::fromArray($workflow->getInternalState());
-        $state->retrievedAt = new \DateTimeImmutable('-1 day');
+        $state->lastRetrievedAt = new \DateTimeImmutable('-1 day');
         $workflow->setInternalState($state->toArray());
         $this->container->get('doctrine.orm.dbp_relay_portfolio_bundle_entity_manager')->flush();
-        $retrievedAt = $workflow->getInternalState()['retrievedAt'];
+        $lastRetrievedAt = $workflow->getInternalState()['lastRetrievedAt'];
         self::assertSame(200, $this->controller->getDocument($id, $this->request())->getStatusCode());
-        self::assertGreaterThan(new \DateTimeImmutable($retrievedAt), new \DateTimeImmutable($workflow->getInternalState()['retrievedAt']));
-        self::assertSame($closedAt, $workflow->getClosedAt());
+        self::assertGreaterThan(new \DateTimeImmutable($lastRetrievedAt), new \DateTimeImmutable($workflow->getInternalState()['lastRetrievedAt']));
+        self::assertEquals($closedAt, $workflow->getClosedAt());
         self::assertFalse($workflow->isActive());
         self::assertContains(SigningWorkflowTypeHandler::ACTION_VIEW_FIRST_SIGNED_DOCUMENT, $actionIds());
         self::assertContains(SigningWorkflowTypeHandler::ACTION_VIEW_FINAL_DOCUMENT, $actionIds());
+    }
+
+    public function testExpiredWorkflowCannotSignBeforePing(): void
+    {
+        $workflow = $this->create();
+        $state = SigningWorkflowState::fromArray($workflow->getInternalState());
+        $state->expirationDate = new \DateTimeImmutable('-1 day');
+        $workflow->setInternalState($state->toArray());
+        $this->container->get('doctrine.orm.dbp_relay_portfolio_bundle_entity_manager')->flush();
+        $handler = $this->container->get(SigningWorkflowTypeHandler::class);
+        self::assertSame([], $handler->getExpectedTasks($this->data($workflow)));
+        $actions = array_map(static fn ($action): string => $action->getId(), $handler->getAvailableActions($this->data($workflow), 'en'));
+        self::assertNotContains(SigningWorkflowTypeHandler::ACTION_FIRST_SIGNATURE, $actions);
+        $this->expectException(BadRequestHttpException::class);
+        $this->expectExceptionMessage('The signing deadline has expired.');
+        $handler->handleAction($this->data($workflow), SigningWorkflowTypeHandler::ACTION_FIRST_SIGNATURE, [], 'en');
+    }
+
+    #[DataProvider('signatureRetries')]
+    public function testDuplicateSignatureDoesNotUploadAnotherFile(int $number): void
+    {
+        $workflow = $this->create();
+        $this->workflows->handleAction($workflow->getId(), SigningWorkflowTypeHandler::ACTION_FIRST_SIGNATURE, [], 'en');
+        if ($number === 1) {
+            $this->workflows->handleAction($workflow->getId(), SigningWorkflowTypeHandler::ACTION_SECOND_SIGNATURE, [], 'en');
+        }
+        $state = $workflow->getInternalState();
+        $blob = $this->container->get('dbp.relay.portfolio.blob_api');
+        $files = iterator_to_array($blob->getFiles(1, 10));
+        $action = $number === 0 ? SigningWorkflowTypeHandler::ACTION_FIRST_SIGNATURE : SigningWorkflowTypeHandler::ACTION_SECOND_SIGNATURE;
+        try {
+            $this->workflows->handleAction($workflow->getId(), $action, [], 'en');
+            self::fail('A duplicate signature must be rejected.');
+        } catch (BadRequestHttpException) {
+            self::assertSame($state, $workflow->getInternalState());
+            self::assertCount(count($files), iterator_to_array($blob->getFiles(1, 10)));
+        }
+    }
+
+    public static function signatureRetries(): iterable
+    {
+        yield 'first signature' => [0];
+        yield 'second signature' => [1];
+    }
+
+    #[DataProvider('finalStatuses')]
+    public function testFinalStatusCannotBeOverwrittenByExpirationOrCancellation(SignJobState $status): void
+    {
+        $workflow = $this->create();
+        $state = SigningWorkflowState::fromArray($workflow->getInternalState());
+        $state->signingStatus = $status;
+        $workflow->setInternalState($state->toArray());
+        $handler = $this->container->get(SigningWorkflowTypeHandler::class);
+        $result = $handler->cancel($this->data($workflow), 'owner@example.com');
+        self::assertSame($state->toArray(), $result->getInternalState());
+        self::assertNull(SigningWorkflowState::fromArray($result->getInternalState())->cancelledAt);
+        $this->expectException(BadRequestHttpException::class);
+        $handler->handleAction($this->data($workflow), SigningWorkflowTypeHandler::ACTION_EXPIRE, [], 'en');
+    }
+
+    public static function finalStatuses(): iterable
+    {
+        foreach (SignJobState::cases() as $status) {
+            if ($status->isFinal()) {
+                yield $status->value => [$status];
+            }
+        }
+    }
+
+    public function testPingDoesNotOverwriteNewerSuccessfulState(): void
+    {
+        $workflow = $this->create();
+        $state = SigningWorkflowState::fromArray($workflow->getInternalState());
+        $state->expirationDate = new \DateTimeImmutable('-1 day');
+        $workflow->setInternalState($state->toArray());
+        $em = $this->container->get('doctrine.orm.dbp_relay_portfolio_bundle_entity_manager');
+        $em->flush();
+
+        // Simulate another request completing the job while this entity remains stale.
+        $state->signingStatus = SignJobState::FINISHED_SUCCESS;
+        foreach ($state->iterations as $iteration) {
+            $iteration->signedDocument = $state->documentToSign;
+        }
+        $em->getConnection()->executeStatement('UPDATE portfolio_workflows SET internal_state = ? WHERE id = ?', [json_encode($state->toArray(), JSON_THROW_ON_ERROR), $workflow->getId()]);
+        $this->workflows->pingAll();
+        self::assertSame(SignJobState::FINISHED_SUCCESS, SigningWorkflowState::fromArray($workflow->getInternalState())->signingStatus);
+        self::assertTrue($workflow->isActive());
     }
 
     #[DataProvider('invalidJobs')]

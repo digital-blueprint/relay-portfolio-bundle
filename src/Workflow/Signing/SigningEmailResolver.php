@@ -9,6 +9,10 @@ use Dbp\Relay\CoreBundle\Rest\Options;
 use Dbp\Relay\CoreBundle\Rest\Query\Filter\FilterTreeBuilder;
 use Dbp\Relay\PortfolioBundle\SignApi\SignException;
 
+/**
+ * The signing API identifies internal users by email address.
+ * Resolve these addresses to internal user IDs before persisting workflow identities.
+ */
 final class SigningEmailResolver
 {
     public function __construct(private readonly PersonProviderInterface $personProvider)

@@ -37,7 +37,7 @@ class WorkflowResourcesTest extends AbstractTestCase
     {
         $handler = $this->container->get(SigningWorkflowTypeHandler::class);
         $external = new SigningInvitee('external-task', 'guest@example.com', displayName: 'Guest Example');
-        $state = new SigningWorkflowState('process49', 'owner@example.com', 'owner-id', 'file-id', 'contract.pdf', [
+        $state = new SigningWorkflowState('process49', 'owner@example.com', 'owner-id', ['fileId' => 'file-id', 'filename' => 'contract.pdf'], [
             new SigningIteration(0, SignCategory::APPROVAL, [new SigningInvitee('internal-task', 'approver@example.com', userId: 'approver-id', displayName: 'Approver')]),
             new SigningIteration(1, SignCategory::EXTERNAL_APPROVAL, [$external]),
         ], description: 'Please sign the contract.');

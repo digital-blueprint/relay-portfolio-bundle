@@ -6,6 +6,9 @@ namespace Dbp\Relay\PortfolioBundle\Workflow\Signing\State;
 
 /**
  * The invitee ID also identifies their task within this iteration.
+ * A null userId denotes an external signer, never an unresolved internal identity.
+ * Email and displayName are creation-time snapshots; userId is the internal person ID.
+ * Locale is an optional external signer preference, not an identity attribute.
  */
 final class SigningInvitee
 {

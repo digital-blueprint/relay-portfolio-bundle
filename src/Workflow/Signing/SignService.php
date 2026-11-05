@@ -67,7 +67,7 @@ class SignService implements SignServiceInterface
         $state = SigningWorkflowState::fromArray($workflow->getInternalState());
 
         return new SignJobStateResponse(
-            state: $state->status,
+            state: $state->signingStatus,
             processId: $state->signingProcessId,
             processInstanceId: $workflow->getId(),
             jobMetaData: array_filter([
@@ -101,7 +101,7 @@ class SignService implements SignServiceInterface
 
         $result = $this->workflows->updateWorkflow($processInstanceId, fn (WorkflowData $workflow) => $this->handler->cancel($workflow, $requestedBy->getName()));
 
-        return SigningWorkflowState::fromArray($result->getInternalState())->status;
+        return SigningWorkflowState::fromArray($result->getInternalState())->signingStatus;
     }
 
     public function getDocument(string $processInstanceId): ?string
@@ -111,7 +111,7 @@ class SignService implements SignServiceInterface
             throw SignException::jobNotFound($processInstanceId);
         }
         $state = SigningWorkflowState::fromArray($workflow->getInternalState());
-        if ($state->status !== SignJobState::FINISHED_SUCCESS) {
+        if ($state->signingStatus !== SignJobState::FINISHED_SUCCESS) {
             return null;
         }
         $document = $state->getCurrentDocument();

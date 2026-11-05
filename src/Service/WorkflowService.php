@@ -10,6 +10,7 @@ use Dbp\Relay\PortfolioBundle\Handler\WorkflowData;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowTypeHandlerRegistry;
 use Dbp\Relay\PortfolioBundle\Persistence\TaskPersistence;
 use Dbp\Relay\PortfolioBundle\Persistence\WorkflowPersistence;
+use Doctrine\DBAL\LockMode;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerAwareInterface;
 use Psr\Log\LoggerAwareTrait;
@@ -213,6 +214,11 @@ class WorkflowService implements LoggerAwareInterface
         }
 
         return $this->em->wrapInTransaction(function () use ($workflow, $update): WorkflowActionResult {
+            // Serialize updates and reload state that may have changed since lookup.
+            $this->em->refresh($workflow, LockMode::PESSIMISTIC_WRITE);
+            if ($workflow->isDeleted()) {
+                throw new NotFoundHttpException(sprintf("Workflow '%s' not found.", $workflow->getId()));
+            }
             $result = $update($this->toWorkflowData($workflow));
             $now = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
 
@@ -326,10 +332,14 @@ class WorkflowService implements LoggerAwareInterface
             if (!$this->workflowTypeHandlerRegistry->hasHandler($workflow->getType())) {
                 continue;
             }
-            $handler = $this->workflowTypeHandlerRegistry->getHandler($workflow->getType());
-            $result = $handler->ping($this->toWorkflowData($workflow));
-
-            $this->em->wrapInTransaction(function () use ($workflow, $result): void {
+            $this->em->wrapInTransaction(function () use ($workflow): void {
+                // Evaluate timeouts under the same lock as actions, not on stale state.
+                $this->em->refresh($workflow, LockMode::PESSIMISTIC_WRITE);
+                if (!$workflow->isActive() || $workflow->isDeleted()) {
+                    return;
+                }
+                $handler = $this->workflowTypeHandlerRegistry->getHandler($workflow->getType());
+                $result = $handler->ping($this->toWorkflowData($workflow));
                 if ($result !== null) {
                     $now = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
                     $workflow->setInternalState($result->getInternalState());

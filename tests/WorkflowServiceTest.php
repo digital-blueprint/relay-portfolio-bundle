@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Dbp\Relay\PortfolioBundle\Tests;
 
+use Dbp\Relay\PortfolioBundle\Handler\WorkflowActionResult;
+use Dbp\Relay\PortfolioBundle\Handler\WorkflowData;
 use Dbp\Relay\PortfolioBundle\Service\WorkflowService;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
@@ -88,6 +90,20 @@ class WorkflowServiceTest extends AbstractTestCase
     {
         $this->expectException(NotFoundHttpException::class);
         $this->service->handleAction('no-such-id', DummyWorkflowTypeHandler::ACTION_PROCEED, [], 'en');
+    }
+
+    public function testUpdateReloadsStateBeforeCallingHandler(): void
+    {
+        $workflow = $this->service->createWorkflow(DummyWorkflowTypeHandler::TYPE, ['step' => 'old']);
+        $em = $this->container->get('doctrine.orm.dbp_relay_portfolio_bundle_entity_manager');
+        $em->getConnection()->executeStatement('UPDATE portfolio_workflows SET internal_state = ? WHERE id = ?', [json_encode(['step' => 'new'], JSON_THROW_ON_ERROR), $workflow->getId()]);
+
+        $this->service->updateWorkflow($workflow->getId(), static function (WorkflowData $data): WorkflowActionResult {
+            self::assertSame(['step' => 'new'], $data->getInternalState());
+
+            return new WorkflowActionResult(internalState: $data->getInternalState());
+        });
+        self::assertSame(['step' => 'new'], $workflow->getInternalState());
     }
 
     public function testHandleActionUnavailableAction(): void

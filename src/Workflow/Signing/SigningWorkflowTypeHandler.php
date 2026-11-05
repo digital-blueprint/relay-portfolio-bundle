@@ -111,8 +111,7 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
             signingProcessId: $processId,
             constituentEmail: $job->getConstituent()->getName(),
             constituentUserId: $owner['personId'],
-            documentToSignFileId: $documentId,
-            documentToSignFilename: $document['filename'],
+            documentToSign: ['fileId' => $documentId, 'filename' => $document['filename']],
             iterations: $iterations,
             attachments: $attachments,
             description: $metadata?->getDescription(),
@@ -194,7 +193,7 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
     public function getStatusDisplay(WorkflowData $workflow, string $lang): StatusDisplay
     {
         $state = SigningWorkflowState::fromArray($workflow->getInternalState());
-        if ($state->status === SignJobState::FINISHED_WF_CANCELLED) {
+        if ($state->signingStatus === SignJobState::FINISHED_WF_CANCELLED) {
             return new StatusDisplay(
                 $this->translator->trans('signing_workflow.state.cancelled', locale: $lang),
                 $this->translator->trans(
@@ -205,19 +204,19 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
             );
         }
         $total = count($state->iterations);
-        $signed = count(array_filter($state->iterations, static fn (SigningIteration $iteration): bool => $iteration->signedDocumentFileId !== null));
-        $key = match ($state->status) {
-            SignJobState::FINISHED_SUCCESS => $state->retrievedAt !== null ? 'transferred' : 'waiting_for_sap',
+        $signed = count(array_filter($state->iterations, static fn (SigningIteration $iteration): bool => $iteration->signedDocument !== null));
+        $key = match ($state->signingStatus) {
+            SignJobState::FINISHED_SUCCESS => $state->lastRetrievedAt !== null ? 'transferred' : 'waiting_for_sap',
             SignJobState::FINISHED_TIMEOUT => 'expired',
             default => 'pending',
         };
 
         return new StatusDisplay(
-            $state->status->isFinal() && $key === 'pending' ? $state->status->value : $this->translator->trans('signing_workflow.state.'.$key, locale: $lang),
+            $state->signingStatus->isFinal() && $key === 'pending' ? $state->signingStatus->value : $this->translator->trans('signing_workflow.state.'.$key, locale: $lang),
             $this->translator->trans('signing_workflow.state.'.$key.'_desc', [
                 '%signed%' => $signed,
                 '%total%' => $total,
-                '%date%' => $state->retrievedAt?->format('Y-m-d H:i:s T') ?? '',
+                '%date%' => $state->lastRetrievedAt?->format('Y-m-d H:i:s T') ?? '',
             ], locale: $lang),
         );
     }
@@ -266,7 +265,7 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
         }
 
         foreach ($state->iterations as $iteration) {
-            if ($iteration->signedDocumentFileId !== null) {
+            if ($iteration->signedDocument !== null) {
                 $first = $iteration->number === 0;
                 $document = $this->getSignedDocument($state, (string) $iteration->number);
                 $actions[] = new Action(
@@ -277,10 +276,10 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
             }
         }
 
-        if ($workflow->isActive() && !$state->status->isFinal()) {
+        if ($workflow->isActive() && !$state->signingStatus->isFinal()) {
             $actions[] = new Action(self::ACTION_SAP_CANCEL, $this->translator->trans('signing_workflow.action.sap_cancel', locale: $lang));
             $iteration = $state->getCurrentIteration();
-            if ($iteration !== null) {
+            if ($iteration !== null && !$this->hasExpired($state)) {
                 $first = $iteration->number === 0;
                 $actions[] = new Action(
                     $first ? self::ACTION_FIRST_SIGNATURE : self::ACTION_SECOND_SIGNATURE,
@@ -289,7 +288,7 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
             }
             $actions[] = new Action(self::ACTION_EXPIRE, $this->translator->trans('signing_workflow.action.expire', locale: $lang));
         }
-        if ($state->status === SignJobState::FINISHED_SUCCESS && $state->retrievedAt === null) {
+        if ($state->signingStatus === SignJobState::FINISHED_SUCCESS && $state->lastRetrievedAt === null) {
             $actions[] = new Action(self::ACTION_SAP_RETRIEVE, $this->translator->trans('signing_workflow.action.sap_retrieve', locale: $lang));
         }
         $actions[] = new Action(self::ACTION_DELETE, $this->translator->trans('signing_workflow.action.delete', locale: $lang));
@@ -301,6 +300,9 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
     {
         if ($action === self::ACTION_EXPIRE) {
             $state = SigningWorkflowState::fromArray($workflow->getInternalState());
+            if (!$workflow->isActive() || $state->signingStatus->isFinal()) {
+                throw new BadRequestHttpException('Only an active signing job can expire.');
+            }
             $state->expirationDate = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
 
             return $this->expire($state);
@@ -348,6 +350,9 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
     {
         $state = SigningWorkflowState::fromArray($workflow->getInternalState());
         $iteration = $state->getCurrentIteration();
+        if ($this->hasExpired($state)) {
+            throw new BadRequestHttpException('The signing deadline has expired.');
+        }
         if (!$workflow->isActive() || $iteration === null || $iteration->number !== $number) {
             throw new BadRequestHttpException('Signature does not belong to the current signing iteration.');
         }
@@ -356,10 +361,12 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
         $files = $this->helper->getFiles($workflow->getId());
         // Placeholder: copy the current PDF without applying a real signature.
         $contents = $files->download($document['fileId'])->getFileStream()->getContents();
-        $iteration->signedDocumentFileId = $files->store($document['filename'], 'application/pdf', $contents);
-        $iteration->signedDocumentFilename = $document['filename'];
+        $iteration->signedDocument = [
+            'fileId' => $files->store($document['filename'], 'application/pdf', $contents),
+            'filename' => $document['filename'],
+        ];
         if ($state->getCurrentIteration() === null) {
-            $state->status = SignJobState::FINISHED_SUCCESS;
+            $state->signingStatus = SignJobState::FINISHED_SUCCESS;
         }
 
         return new WorkflowActionResult(internalState: $state->toArray());
@@ -368,10 +375,10 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
     public function recordRetrieval(WorkflowData $workflow): WorkflowActionResult
     {
         $state = SigningWorkflowState::fromArray($workflow->getInternalState());
-        if ($state->status !== SignJobState::FINISHED_SUCCESS) {
+        if ($state->signingStatus !== SignJobState::FINISHED_SUCCESS) {
             throw new BadRequestHttpException('The final document is not available for retrieval yet.');
         }
-        $state->retrievedAt = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+        $state->lastRetrievedAt = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
 
         return new WorkflowActionResult(
             internalState: $state->toArray(),
@@ -382,15 +389,16 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
     public function cancel(WorkflowData $workflow, string $email): WorkflowActionResult
     {
         $state = SigningWorkflowState::fromArray($workflow->getInternalState());
-        if (!$state->status->isFinal()) {
+        if ($workflow->isActive() && !$state->signingStatus->isFinal()) {
             $state->cancelledByUserId = $this->emailResolver->resolve($email)['personId'];
             $state->cancelledByEmail = trim($email);
-            $state->status = SignJobState::FINISHED_WF_CANCELLED;
+            $state->cancelledAt = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+            $state->signingStatus = SignJobState::FINISHED_WF_CANCELLED;
         }
 
         return new WorkflowActionResult(
             internalState: $state->toArray(),
-            close: $state->status === SignJobState::FINISHED_WF_CANCELLED && $workflow->isActive() ? true : null,
+            close: $state->signingStatus === SignJobState::FINISHED_WF_CANCELLED && $workflow->isActive() ? true : null,
         );
     }
 
@@ -399,7 +407,8 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
         if (!$workflow->isActive()) {
             return [];
         }
-        $iteration = SigningWorkflowState::fromArray($workflow->getInternalState())->getCurrentIteration();
+        $state = SigningWorkflowState::fromArray($workflow->getInternalState());
+        $iteration = $this->hasExpired($state) ? null : $state->getCurrentIteration();
 
         return $iteration !== null ? [$iteration->invitees[0]->id] : [];
     }
@@ -448,11 +457,8 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
     private function getSignedDocument(SigningWorkflowState $state, string $number): array
     {
         foreach ($state->iterations as $iteration) {
-            if ((string) $iteration->number === $number && $iteration->signedDocumentFileId !== null) {
-                return [
-                    'fileId' => $iteration->signedDocumentFileId,
-                    'filename' => $iteration->signedDocumentFilename ?? $state->documentToSignFilename,
-                ];
+            if ((string) $iteration->number === $number && $iteration->signedDocument !== null) {
+                return $iteration->signedDocument;
             }
         }
 
@@ -474,17 +480,21 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
     public function ping(WorkflowData $workflow): ?WorkflowActionResult
     {
         $state = SigningWorkflowState::fromArray($workflow->getInternalState());
-        if (!$workflow->isActive() || $state->status->isFinal() || $state->expirationDate === null
-            || $state->expirationDate > new \DateTimeImmutable('now', new \DateTimeZone('UTC'))) {
+        if (!$workflow->isActive() || $state->signingStatus->isFinal() || !$this->hasExpired($state)) {
             return null;
         }
 
         return $this->expire($state);
     }
 
+    private function hasExpired(SigningWorkflowState $state): bool
+    {
+        return $state->expirationDate !== null && $state->expirationDate <= new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+    }
+
     private function expire(SigningWorkflowState $state): WorkflowActionResult
     {
-        $state->status = SignJobState::FINISHED_TIMEOUT;
+        $state->signingStatus = SignJobState::FINISHED_TIMEOUT;
 
         return new WorkflowActionResult(internalState: $state->toArray(), close: true);
     }
