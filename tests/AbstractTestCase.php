@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Dbp\Relay\PortfolioBundle\Tests;
 
+use Dbp\Relay\BasePersonBundle\API\PersonProviderInterface;
 use Dbp\Relay\BlobBundle\TestUtils\BlobTestUtils;
 use Dbp\Relay\BlobBundle\TestUtils\TestEntityManager as BlobTestEntityManager;
 use Dbp\Relay\CoreBundle\TestUtils\TestAuthorizationService;
@@ -21,6 +22,7 @@ abstract class AbstractTestCase extends KernelTestCase
         self::bootKernel();
         // getContainer() returns the special test container that exposes private services
         $this->container = static::getContainer();
+        $this->container->set(PersonProviderInterface::class, $this->createStub(PersonProviderInterface::class));
         TestEntityManager::setUp($this->container);
         $this->testEntityManager = new TestEntityManager($this->container);
         new BlobTestEntityManager($this->container);

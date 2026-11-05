@@ -1,12 +1,15 @@
 signing_workflow:
-    name: 'Signing Workflow'
-    description: 'Sign one or more PDF documents via an external signing service.'
+    name: 'Employment Contract'
+    description: 'Sign a PDF document in two approval steps.'
+    external_signer: 'External signer: %signer%.'
     state:
         completed: 'Completed'
-        completed_desc: 'All %total% document(s) have been signed.'
+        completed_desc: 'All %total% signature(s) have been completed.'
         pending: 'Pending'
-        pending_desc: '%signed% / %total% document(s) signed'
+        pending_desc: '%signed% / %total% signature(s) completed'
     action:
+        view_document: 'View document'
+        delete: 'Delete workflow (testing)'
         sign: 'Sign Documents'
         check: 'Check Signing Status'
         task: 'Show Task'

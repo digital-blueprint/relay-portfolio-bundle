@@ -13,6 +13,7 @@ use Dbp\Relay\PortfolioBundle\SignApi\SignJobStateResponse;
 use Dbp\Relay\PortfolioBundle\SignApi\SignServiceInterface;
 use Dbp\Relay\PortfolioBundle\SignApi\SignServiceRegistry;
 use Dbp\Relay\PortfolioBundle\Tests\AbstractTestCase;
+use Dbp\Relay\PortfolioBundle\Tests\SigningTestUtils;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Request;
@@ -40,7 +41,7 @@ class SignControllerTest extends AbstractTestCase
         $credentials = $this->container->get(SignCredentials::class);
         $this->controller = new SignController($registry, $credentials);
         $service = $registry->getService('test_process');
-        $this->processInstanceId = $service->startProcess('test_process', SignJobDescription::fromArray($this->jobDescription()), $this->makePdf(), []);
+        $this->processInstanceId = $service->startProcess('test_process', SignJobDescription::fromArray($this->jobDescription()), SigningTestUtils::pdf(), []);
     }
 
     private function jobDescription(): array
@@ -118,7 +119,7 @@ class SignControllerTest extends AbstractTestCase
     {
         $registry = new SignServiceRegistry();
         $registry->addService('test_process', $service);
-        $this->processInstanceId = $service->startProcess('test_process', SignJobDescription::fromArray($this->jobDescription()), $this->makePdf(), []);
+        $this->processInstanceId = $service->startProcess('test_process', SignJobDescription::fromArray($this->jobDescription()), SigningTestUtils::pdf(), []);
 
         return new SignController($registry, $this->container->get(SignCredentials::class));
     }
@@ -158,14 +159,14 @@ class SignControllerTest extends AbstractTestCase
         $this->assertNotEmpty(trim((string) $response->getContent()));
     }
 
-    public function testStartProcessPassesUploadsWithTheirOriginalNames(): void
+    public function testStartProcessPassesTypedJobAndUploadsWithTheirOriginalNames(): void
     {
         $document = $this->makePdf(filename: 'work-contract.pdf');
         $attachment = $this->makePdf(filename: 'supporting.pdf');
         $service = $this->createMock(SignServiceInterface::class);
         $service->expects(self::once())->method('startProcess')->with(
             'test_process',
-            self::isInstanceOf(SignJobDescription::class),
+            self::equalTo(SignJobDescription::fromArray($this->jobDescription())),
             self::identicalTo($document),
             self::identicalTo([$attachment]),
         )->willReturn('job-id');

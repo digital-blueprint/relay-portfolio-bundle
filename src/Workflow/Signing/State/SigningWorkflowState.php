@@ -32,6 +32,7 @@ final class SigningWorkflowState
         public SignJobState $status = SignJobState::ACTIVE,
         public ?\DateTimeImmutable $retrievedAt = null,
         public ?string $cancelledBy = null,
+        public ?string $constituentDisplayName = null,
     ) {
     }
 
@@ -85,6 +86,7 @@ final class SigningWorkflowState
             status: SignJobState::from($data['status']),
             retrievedAt: isset($data['retrievedAt']) ? new \DateTimeImmutable($data['retrievedAt']) : null,
             cancelledBy: $data['cancelledBy'] ?? null,
+            constituentDisplayName: $data['constituentDisplayName'] ?? null,
         );
     }
 
@@ -95,6 +97,7 @@ final class SigningWorkflowState
             'signingProcessId' => $this->signingProcessId,
             'constituentEmail' => $this->constituentEmail,
             'constituentUserId' => $this->constituentUserId,
+            'constituentDisplayName' => $this->constituentDisplayName,
             'status' => $this->status->value,
             'documentToSignFileId' => $this->documentToSignFileId,
             'documentToSignFilename' => $this->documentToSignFilename,

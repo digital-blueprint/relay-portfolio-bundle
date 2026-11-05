@@ -11,12 +11,14 @@ class WorkflowActionResult
      * @param bool|null            $close         null = no change; true = close the workflow (set closedAt = now); false = re-open the workflow (set closedAt = null)
      * @param WorkflowMessage|null $message       Optional UI message to display to the user; mutually exclusive with $url
      * @param string|null          $url           Optional URL to return to the client (e.g. a signed URL); mutually exclusive with $message
+     * @param bool                 $delete        Soft-delete the workflow and queue external resource cleanup
      */
     public function __construct(
         private readonly array $internalState,
         private readonly ?bool $close = null,
         private readonly ?WorkflowMessage $message = null,
         private readonly ?string $url = null,
+        private readonly bool $delete = false,
     ) {
         if ($message !== null && $url !== null) {
             throw new \InvalidArgumentException('WorkflowActionResult cannot have both a message and a url set; they are mutually exclusive.');
@@ -50,5 +52,10 @@ class WorkflowActionResult
     public function getUrl(): ?string
     {
         return $this->url;
+    }
+
+    public function getDelete(): bool
+    {
+        return $this->delete;
     }
 }

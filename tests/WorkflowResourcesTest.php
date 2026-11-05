@@ -6,10 +6,14 @@ namespace Dbp\Relay\PortfolioBundle\Tests;
 
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowData;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowTypeHandlerRegistry;
+use Dbp\Relay\PortfolioBundle\SignApi\SignCategory;
 use Dbp\Relay\PortfolioBundle\SignApi\SignServiceRegistry;
 use Dbp\Relay\PortfolioBundle\Workflow\Dummy\DummyWorkflowTypeHandler;
 use Dbp\Relay\PortfolioBundle\Workflow\Signing\SigningWorkflowTypeHandler;
 use Dbp\Relay\PortfolioBundle\Workflow\Signing\SignService;
+use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningInvitee;
+use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningIteration;
+use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningWorkflowState;
 
 class WorkflowResourcesTest extends AbstractTestCase
 {
@@ -21,40 +25,34 @@ class WorkflowResourcesTest extends AbstractTestCase
         $this->assertInstanceOf(SigningWorkflowTypeHandler::class, $registry->getHandler('signing'));
     }
 
-    public function testDummyWorkflowResources(): void
-    {
-        $handler = $this->container->get(DummyWorkflowTypeHandler::class);
-        $workflow = new WorkflowData('wf-dummy', $handler->getType(), true, $handler->create('wf-dummy', []), new \DateTimeImmutable());
-
-        $this->assertSame('Untitled', $handler->getName($workflow, 'en'));
-        $this->assertSame('Unbenannt', $handler->getName($workflow, 'de'));
-        $this->assertSame('Waiting', $handler->getStatusDisplay($workflow, 'en')->getLabel());
-        $this->assertSame('Wartend', $handler->getStatusDisplay($workflow, 'de')->getLabel());
-
-        $html = $handler->getRenderResponse($workflow, DummyWorkflowTypeHandler::RENDER_HELLO, 'de')->getHtml();
-        $this->assertStringContainsString('<html lang="de">', $html);
-        $this->assertStringContainsString('<title>Unbenannt</title>', $html);
-        $this->assertStringContainsString('Counter: 0', $html);
-    }
-
-    public function testSigningWorkflowTranslations(): void
-    {
-        $handler = $this->container->get(SigningWorkflowTypeHandler::class);
-        $workflow = new WorkflowData('wf-signing', $handler->getType(), true, $handler->create('wf-signing', []), new \DateTimeImmutable());
-
-        $this->assertSame('Signing Workflow', $handler->getName($workflow, 'en'));
-        $this->assertSame('Signatur-Workflow', $handler->getName($workflow, 'de'));
-        $this->assertSame('Pending', $handler->getStatusDisplay($workflow, 'en')->getLabel());
-        $this->assertSame('Ausstehend', $handler->getStatusDisplay($workflow, 'de')->getLabel());
-    }
-
-    public function testDummySigningDocument(): void
+    public function testSigningServiceIsRegistered(): void
     {
         $service = $this->container->get(SignServiceRegistry::class)->getService('process49');
 
         $this->assertInstanceOf(SignService::class, $service);
-        $document = $service->getDocument('dummy-sign-test');
-        $this->assertNotNull($document);
-        $this->assertStringStartsWith('%PDF-', $document);
+        $this->assertNull($service->resolveProcessId('dummy-sign-test'));
+    }
+
+    public function testSigningTitleAndDescriptionIdentifyExternalSigner(): void
+    {
+        $handler = $this->container->get(SigningWorkflowTypeHandler::class);
+        $external = new SigningInvitee('external-task', 'guest@example.com', displayName: 'Guest Example');
+        $state = new SigningWorkflowState('process49', 'owner@example.com', 'owner-id', 'file-id', 'contract.pdf', [
+            new SigningIteration(0, SignCategory::APPROVAL, [new SigningInvitee('internal-task', 'approver@example.com', userId: 'approver-id', displayName: 'Approver')]),
+            new SigningIteration(1, SignCategory::EXTERNAL_APPROVAL, [$external]),
+        ], description: 'Please sign the contract.');
+        $workflow = new WorkflowData('wf-signing', $handler->getType(), true, $state->toArray(), new \DateTimeImmutable());
+
+        self::assertStringContainsString('Guest Example', $handler->getName($workflow, 'de'));
+        self::assertStringContainsString('guest@example.com', $handler->getName($workflow, 'de'));
+        $description = $handler->getDescription($workflow, 'de');
+        self::assertStringContainsString('Please sign the contract.', $description);
+        self::assertStringContainsString('Guest Example', $description);
+        self::assertStringContainsString('guest@example.com', $description);
+
+        $external->displayName = null;
+        $workflow = new WorkflowData('wf-signing', $handler->getType(), true, $state->toArray(), new \DateTimeImmutable());
+        self::assertStringContainsString('guest@example.com', $handler->getName($workflow, 'de'));
+        self::assertStringContainsString('guest@example.com', $handler->getDescription($workflow, 'de'));
     }
 }

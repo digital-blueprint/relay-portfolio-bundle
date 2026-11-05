@@ -72,7 +72,7 @@ class WorkflowPersistence
 
     public function setInternalState(array $internalState): void
     {
-        $this->internalState = json_encode($internalState, JSON_THROW_ON_ERROR);
+        $this->internalState = json_encode($internalState, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT);
     }
 
     public function getCreatedAt(): ?\DateTimeImmutable

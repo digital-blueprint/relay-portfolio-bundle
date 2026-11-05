@@ -4,141 +4,92 @@ declare(strict_types=1);
 
 namespace Dbp\Relay\PortfolioBundle\Workflow\Signing;
 
+use Dbp\Relay\PortfolioBundle\Persistence\WorkflowPersistence;
+use Dbp\Relay\PortfolioBundle\Service\WorkflowService;
+use Dbp\Relay\PortfolioBundle\SignApi\SignException;
 use Dbp\Relay\PortfolioBundle\SignApi\SignJobDescription;
 use Dbp\Relay\PortfolioBundle\SignApi\SignJobState;
 use Dbp\Relay\PortfolioBundle\SignApi\SignJobStateResponse;
 use Dbp\Relay\PortfolioBundle\SignApi\SignServiceInterface;
 use Dbp\Relay\PortfolioBundle\SignApi\SignUser;
-use Psr\Log\LoggerAwareInterface;
-use Psr\Log\LoggerAwareTrait;
-use Psr\Log\NullLogger;
+use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningWorkflowState;
 use Symfony\Component\DependencyInjection\Attribute\AutoconfigureTag;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
+use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Uid\Uuid;
 
-/**
- * Implements the behaviour behind the four Sign endpoints.
- *
- * This is a dummy implementation: no signature backend or durable
- * persistence is wired up. The goal is to exercise the API contract
- * (routing, auth, multipart parsing, response shapes) end-to-end against the
- * signature client and its test client.
- *
- *   - startProcess -> mints a fresh processInstanceId
- *   - getJobState  -> returns a fixed STATE
- *   - cancelJob    -> returns FINISHED_WF_CANCELLED
- *   - getDocument  -> returns a fixed sample PDF
- */
-#[AutoconfigureTag('dbp.relay.portfolio.sign_service', ['process_id' => 'process49'])]
-class SignService implements SignServiceInterface, LoggerAwareInterface
+#[AutoconfigureTag('dbp.relay.portfolio.sign_service', ['process_id' => self::PROCESS_ID])]
+class SignService implements SignServiceInterface
 {
-    use LoggerAwareTrait;
+    public const PROCESS_ID = 'process49';
 
-    /**
-     * The state getJobState reports for every (unknown-to-us) job. Since there
-     * is no real workflow yet, we report ACTIVE so pollers see a non-final job.
-     */
-    public const DEFAULT_JOB_STATE = SignJobState::ACTIVE;
-
-    private const SIGNED_DOCUMENT_PATH = __DIR__.'/Resources/signed-document.pdf';
-    private const INSTANCE_PREFIX = 'dummy-sign-';
-
-    public function __construct()
+    public function __construct(private readonly WorkflowService $workflows)
     {
-        $this->logger = new NullLogger();
     }
 
-    /**
-     * Creates a signature job and returns its processInstanceId.
-     *
-     * @param string             $processId      the process configuration key
-     *                                           (e.g. "foobar42"); selects the
-     *                                           process/workflow to run,
-     *                                           distinct from the returned
-     *                                           processInstanceId
-     * @param SignJobDescription $jobDescription the parsed job model
-     * @param UploadedFile       $documentToSign uploaded main PDF
-     * @param list<UploadedFile> $attachments    uploaded attachment PDFs
-     *
-     * @return string the new processInstanceId (used as the key for all later calls)
-     */
     public function startProcess(string $processId, SignJobDescription $jobDescription, UploadedFile $documentToSign, array $attachments): string
     {
-        $processInstanceId = self::INSTANCE_PREFIX.Uuid::v4()->toRfc4122();
+        if ($processId !== self::PROCESS_ID) {
+            throw new SignException('Unsupported signing process.', Response::HTTP_NOT_FOUND);
+        }
 
-        $this->logger->info('Sign startProcess', [
-            'processId' => $processId,
-            'processInstanceId' => $processInstanceId,
-            'referenceId' => $jobDescription->getMetaData()?->getReferenceId(),
-            'documentBytes' => $documentToSign->getSize(),
-            'attachmentCount' => count($attachments),
-        ]);
-
-        return $processInstanceId;
+        return $this->workflows->createWorkflow(SigningWorkflowTypeHandler::TYPE, [
+            'signingProcessId' => $processId,
+            'jobDescription' => $jobDescription,
+            'documentToSign' => $documentToSign,
+            'attachments' => $attachments,
+        ])->getId();
     }
 
-    /**
-     * Returns the fixed dummy process ID for dummy-prefixed instances without
-     * keeping state between requests. Other implementations' IDs are ignored.
-     *
-     * @param string $processInstanceId the id of the job, as returned by startProcess
-     *
-     * @return string|null the processId, or null if the processInstanceId is unknown
-     */
     public function resolveProcessId(string $processInstanceId): ?string
     {
-        return str_starts_with($processInstanceId, self::INSTANCE_PREFIX) ? 'process49' : null;
+        return $this->findWorkflow($processInstanceId) !== null ? self::PROCESS_ID : null;
     }
 
-    /**
-     * Returns the current state of a job.
-     *
-     * @param string $processInstanceId the id of the job to query, as returned by
-     *                                  startProcess
-     * @param string $nameClassifier    the name classifier from the request path
-     */
     public function getJobState(string $processInstanceId, string $nameClassifier): SignJobStateResponse
     {
-        return new SignJobStateResponse(self::DEFAULT_JOB_STATE);
+        if ($nameClassifier !== 'EMAIL') {
+            throw new SignException('Only nameClassifier "EMAIL" is supported.');
+        }
+        $workflow = $this->findWorkflow($processInstanceId);
+        if ($workflow === null) {
+            throw SignException::jobNotFound($processInstanceId);
+        }
+
+        return new SignJobStateResponse(SigningWorkflowState::fromArray($workflow->getInternalState())->status);
     }
 
-    /**
-     * Cancels a job on behalf of the given user and returns the resulting STATE.
-     *
-     * @param string   $processInstanceId the id of the job to cancel, as
-     *                                    returned by startProcess
-     * @param SignUser $requestedBy       the constituent requesting the
-     *                                    cancellation (from the request body)
-     *
-     * @return SignJobState the resulting state (e.g. FINISHED_WF_CANCELLED)
-     */
     public function cancelJob(string $processInstanceId, SignUser $requestedBy): SignJobState
     {
-        $this->logger->info('Sign cancelJob', [
-            'processInstanceId' => $processInstanceId,
-            'requestedBy' => $requestedBy->getName(),
-        ]);
+        if ($this->findWorkflow($processInstanceId) === null) {
+            throw SignException::jobNotFound($processInstanceId);
+        }
 
-        return SignJobState::FINISHED_WF_CANCELLED;
+        throw new SignException('Signing cancellation is not implemented yet.', Response::HTTP_NOT_IMPLEMENTED);
     }
 
-    /**
-     * Returns the signed (or rejected) PDF for a job as raw bytes, or null if no
-     * document is available (the controller turns null into an HTTP 404).
-     *
-     * A real, stateful backend must return null when the job has no downloadable
-     * document yet (still active, or an unknown id) so the connector gets a 404.
-     * This dummy implementation always returns the fixed sample PDF.
-     *
-     * @param string $processInstanceId the id of the job whose document to
-     *                                  download, as returned by startProcess
-     *
-     * @return string|null the raw PDF bytes, or null if no document is available
-     */
     public function getDocument(string $processInstanceId): ?string
     {
-        $bytes = @file_get_contents(self::SIGNED_DOCUMENT_PATH);
+        if ($this->findWorkflow($processInstanceId) === null) {
+            throw SignException::jobNotFound($processInstanceId);
+        }
 
-        return $bytes === false ? null : $bytes;
+        // Result retrieval will be added with the signing callback and completion flow.
+        return null;
+    }
+
+    private function findWorkflow(string $id): ?WorkflowPersistence
+    {
+        if (!Uuid::isValid($id)) {
+            return null;
+        }
+        $workflow = $this->workflows->getWorkflow($id);
+        if ($workflow === null || $workflow->getType() !== SigningWorkflowTypeHandler::TYPE) {
+            return null;
+        }
+        $state = $workflow->getInternalState();
+
+        return ($state['version'] ?? null) === SigningWorkflowState::VERSION
+            && ($state['signingProcessId'] ?? null) === self::PROCESS_ID ? $workflow : null;
     }
 }

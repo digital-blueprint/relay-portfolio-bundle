@@ -4,53 +4,42 @@ declare(strict_types=1);
 
 namespace Dbp\Relay\PortfolioBundle\Workflow\Signing;
 
+use Dbp\Relay\BasePersonBundle\API\PersonProviderInterface;
 use Dbp\Relay\PortfolioBundle\Handler\Action;
 use Dbp\Relay\PortfolioBundle\Handler\CleanupResult;
 use Dbp\Relay\PortfolioBundle\Handler\RenderResult;
 use Dbp\Relay\PortfolioBundle\Handler\StatusDisplay;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowActionResult;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowData;
-use Dbp\Relay\PortfolioBundle\Handler\WorkflowMessage;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowTypeHandlerHelper;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowTypeHandlerInterface;
+use Dbp\Relay\PortfolioBundle\SignApi\SignException;
+use Dbp\Relay\PortfolioBundle\SignApi\SignJobDescription;
+use Dbp\Relay\PortfolioBundle\SignApi\SignJobState;
+use Dbp\Relay\PortfolioBundle\SignApi\SignUtils;
+use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningInvitee;
+use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningIteration;
+use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningWorkflowState;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Symfony\Component\Translation\Loader\YamlFileLoader;
 use Symfony\Component\Translation\Translator;
 use Symfony\Component\Uid\Uuid;
 
-/**
- * Signing workflow — manages signing one or more PDF documents via an external service.
- *
- * Expected internalState shape at creation time:
- * {
- *   "documents": [
- *     { "url": "https://example.com/doc.pdf", "x": 100, "y": 200, "page": 1 },
- *     ...
- *   ]
- * }
- *
- * One task is created for the workflow while it is active. Its ID is a UUID v4 generated at
- * creation time and stored in internalState['taskId'].
- * The external signing service receives the task ID as a URL fragment and calls
- * GET /portfolio/tasks/{taskId} to retrieve the full document list. Each document has a
- * stable "id" of the form "{taskId}_{documentUuid}" so the external app can reference
- * individual documents unambiguously on callback.
- *
- * The "check" action inspects the signed flags and transitions to closed when all
- * documents are marked signed. Flip "signed" flags directly in the DB to simulate callbacks
- * until a real trigger is implemented.
- */
 class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
 {
     public const TYPE = 'signing';
-    public const SIGNING_SERVICE_URL = 'https://dbp-dev.tugraz.at/apps/esign';
-    public const ACTION_SIGN = 'sign';
-    public const ACTION_SHOW_TASK = 'show-task';
-    public const ACTION_CHECK = 'check';
+    public const ACTION_DELETE = 'delete';
+    public const ACTION_VIEW_DOCUMENT = 'view-document';
+    public const RENDER_DOCUMENT = 'document';
 
     private readonly Translator $translator;
 
     public function __construct(
         private readonly WorkflowTypeHandlerHelper $helper,
+        private readonly SigningRequestValidator $validator,
+        private readonly SigningEmailResolver $emailResolver,
+        private readonly PersonProviderInterface $persons,
     ) {
         $translator = new Translator('en');
         $translator->addLoader('yaml', new YamlFileLoader());
@@ -61,18 +50,81 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
 
     public function create(string $workflowId, array $input): array
     {
-        $taskId = Uuid::v4()->toRfc4122();
-        $documents = $input['documents'] ?? [];
-
-        foreach ($documents as &$doc) {
-            $doc['id'] = Uuid::v4()->toRfc4122();
-            $doc['signed'] = false;
+        $processId = SignUtils::requireString($input, 'signingProcessId');
+        if ($processId !== SignService::PROCESS_ID) {
+            throw new SignException('Unsupported signing process.');
         }
-        unset($doc);
+        $job = $input['jobDescription'] ?? null;
+        if (!$job instanceof SignJobDescription) {
+            throw new SignException('The "jobDescription" field must be a parsed signing job.');
+        }
+        $job = $this->validator->validate($job);
+        $document = $this->readPdf($input['documentToSign'] ?? null, 'documentToSign', 'contract.pdf');
+        $attachments = $input['attachments'] ?? [];
+        if (!is_array($attachments) || !array_is_list($attachments)) {
+            throw new SignException('Attachments must be a list of uploaded PDFs.');
+        }
+        foreach ($attachments as $index => $attachment) {
+            $attachments[$index] = $this->readPdf($attachment, 'attachments['.$index.']', 'attachment-'.($index + 1).'.pdf');
+        }
+
+        // Resolve all internal identities before uploading any files.
+        $owner = $this->emailResolver->resolve($job->getConstituent()->getName());
+        $iterations = [];
+        foreach ($job->getIterationData() as $iteration) {
+            $user = $iteration->getInvitees()[0];
+            $internal = $iteration->getIterationNumber() === 0 ? $this->emailResolver->resolve($user->getName()) : null;
+            $iterations[] = new SigningIteration($iteration->getIterationNumber(), $iteration->getCategory(), [
+                new SigningInvitee(
+                    id: Uuid::v4()->toRfc4122(),
+                    email: $user->getName(),
+                    userId: $internal['personId'] ?? null,
+                    displayName: $internal['displayName'] ?? ($user->getExternalUserName() ?: $user->getName()),
+                    locale: $user->getLocale(),
+                ),
+            ]);
+        }
+
+        $files = $this->helper->getFiles($workflowId);
+        $documentId = $files->store($document['filename'], 'application/pdf', $document['contents']);
+        foreach ($attachments as &$attachment) {
+            $attachment = [
+                'fileId' => $files->store($attachment['filename'], 'application/pdf', $attachment['contents']),
+                'filename' => $attachment['filename'],
+            ];
+        }
+        unset($attachment);
+        $metadata = $job->getMetaData();
+
+        return (new SigningWorkflowState(
+            signingProcessId: $processId,
+            constituentEmail: $job->getConstituent()->getName(),
+            constituentUserId: $owner['personId'],
+            documentToSignFileId: $documentId,
+            documentToSignFilename: $document['filename'],
+            iterations: $iterations,
+            attachments: $attachments,
+            description: $metadata?->getDescription(),
+            referenceId: $metadata?->getReferenceId(),
+            expirationDate: $metadata?->getExpirationDate() !== null ? new \DateTimeImmutable($metadata->getExpirationDate()) : null,
+            constituentDisplayName: $owner['displayName'],
+        ))->toArray();
+    }
+
+    /** @return array{filename: string, contents: string} */
+    private function readPdf(mixed $upload, string $field, string $fallbackFilename): array
+    {
+        if (!$upload instanceof UploadedFile || !$upload->isValid()) {
+            throw new SignException(sprintf('The "%s" field must be a successfully uploaded PDF.', $field));
+        }
+        $contents = $upload->getContent();
+        if (!str_starts_with($contents, '%PDF-')) {
+            throw new SignException(sprintf('The "%s" field must contain a PDF.', $field));
+        }
 
         return [
-            'taskId' => $taskId,
-            'documents' => $documents,
+            'filename' => basename(str_replace('\\', '/', $upload->getClientOriginalName())) ?: $fallbackFilename,
+            'contents' => $contents,
         ];
     }
 
@@ -83,145 +135,146 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
 
     public function getName(WorkflowData $workflow, string $lang): string
     {
-        return $this->translator->trans('signing_workflow.name', locale: $lang);
+        $name = $this->translator->trans('signing_workflow.name', locale: $lang);
+        $identity = $this->getExternalSignerIdentity(SigningWorkflowState::fromArray($workflow->getInternalState()));
+
+        return $identity !== null ? $name.' — '.$identity : $name;
     }
 
     public function getDescription(WorkflowData $workflow, string $lang): string
     {
-        return $this->translator->trans('signing_workflow.description', locale: $lang);
+        $state = SigningWorkflowState::fromArray($workflow->getInternalState());
+        $description = $state->description ?? $this->translator->trans('signing_workflow.description', locale: $lang);
+        $identity = $this->getExternalSignerIdentity($state);
+        if ($identity !== null) {
+            $signerDescription = $this->translator->trans('signing_workflow.external_signer', ['%signer%' => $identity], locale: $lang);
+
+            return trim($description.' '.$signerDescription);
+        }
+
+        return $description;
+    }
+
+    private function getExternalSignerIdentity(SigningWorkflowState $state): ?string
+    {
+        foreach ($state->iterations as $iteration) {
+            foreach ($iteration->invitees as $invitee) {
+                if ($invitee->isExternal()) {
+                    $name = trim($invitee->displayName ?? '');
+
+                    return $name !== '' && $name !== $invitee->email ? $name.' ('.$invitee->email.')' : $invitee->email;
+                }
+            }
+        }
+
+        return null;
     }
 
     public function getStatusDisplay(WorkflowData $workflow, string $lang): StatusDisplay
     {
-        $documents = $workflow->getInternalState()['documents'] ?? [];
-        $total = count($documents);
-        $signed = count(array_filter($documents, fn (array $doc) => $doc['signed'] ?? false));
-
-        if (!$workflow->isActive()) {
-            return new StatusDisplay(
-                $this->translator->trans('signing_workflow.state.completed', locale: $lang),
-                $this->translator->trans('signing_workflow.state.completed_desc', ['%total%' => $total], locale: $lang),
-            );
-        }
+        $state = SigningWorkflowState::fromArray($workflow->getInternalState());
+        $total = count($state->iterations);
+        $signed = count(array_filter($state->iterations, static fn (SigningIteration $iteration): bool => $iteration->signedDocumentFileId !== null));
+        $key = $state->status === SignJobState::FINISHED_SUCCESS ? 'completed' : 'pending';
 
         return new StatusDisplay(
-            $this->translator->trans('signing_workflow.state.pending', locale: $lang),
-            $this->translator->trans('signing_workflow.state.pending_desc', ['%signed%' => $signed, '%total%' => $total], locale: $lang),
+            $state->status->isFinal() && $state->status !== SignJobState::FINISHED_SUCCESS ? $state->status->value : $this->translator->trans('signing_workflow.state.'.$key, locale: $lang),
+            $this->translator->trans('signing_workflow.state.'.$key.'_desc', ['%signed%' => $signed, '%total%' => $total], locale: $lang),
         );
     }
 
     public function canUse(WorkflowData $workflow): bool
     {
-        return true;
+        if (($workflow->getInternalState()['version'] ?? null) !== SigningWorkflowState::VERSION) {
+            return false;
+        }
+        $personId = $this->persons->getCurrentPersonIdentifier();
+        if ($personId === null) {
+            return false;
+        }
+        $state = SigningWorkflowState::fromArray($workflow->getInternalState());
+        if ($state->constituentUserId === $personId) {
+            return true;
+        }
+        foreach ($state->iterations as $iteration) {
+            foreach ($iteration->invitees as $invitee) {
+                if ($invitee->userId === $personId) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     public function getAvailableActions(WorkflowData $workflow, string $lang): array
     {
-        if (!$workflow->isActive()) {
+        if ($workflow->isDeleted()) {
             return [];
         }
 
         return [
-            new Action(
-                self::ACTION_SIGN,
-                $this->translator->trans('signing_workflow.action.sign', locale: $lang),
-            ),
-            new Action(
-                self::ACTION_SHOW_TASK,
-                $this->translator->trans('signing_workflow.action.task', locale: $lang),
-            ),
-            new Action(
-                self::ACTION_CHECK,
-                $this->translator->trans('signing_workflow.action.check', locale: $lang),
-            ),
+            new Action(self::ACTION_DELETE, $this->translator->trans('signing_workflow.action.delete', locale: $lang)),
+            new Action(self::ACTION_VIEW_DOCUMENT, $this->translator->trans('signing_workflow.action.view_document', locale: $lang)),
         ];
     }
 
     public function handleAction(WorkflowData $workflow, string $action, array $payload, string $lang): WorkflowActionResult
     {
-        $internalState = $workflow->getInternalState();
-        $documents = $internalState['documents'] ?? [];
-        $total = count($documents);
-        $signed = count(array_filter($documents, fn (array $doc) => $doc['signed'] ?? false));
-
-        if ($action === self::ACTION_SIGN || $action === self::ACTION_SHOW_TASK) {
-            $taskId = $this->getTaskId($workflow);
-            $signedUrl = $this->helper->getSignedTaskUrl($taskId);
-
-            if ($action === self::ACTION_SIGN) {
-                $fragment = rawurlencode($signedUrl);
-                $path = '/'.rawurlencode($lang).'/predefined-signature';
-                $url = self::SIGNING_SERVICE_URL.$path.'#'.$fragment;
-            } else {
-                $url = $signedUrl;
-            }
-
+        if ($action === self::ACTION_VIEW_DOCUMENT) {
             return new WorkflowActionResult(
-                internalState: $internalState,
-                url: $url,
+                internalState: $workflow->getInternalState(),
+                url: $this->helper->getSignedRenderUrl($workflow->getId(), self::RENDER_DOCUMENT),
             );
         }
-
-        if ($signed === $total && $total > 0) {
-            return new WorkflowActionResult(
-                internalState: $internalState,
-                close: true,
-                message: new WorkflowMessage(
-                    type: WorkflowMessage::TYPE_SUCCESS,
-                    title: $this->translator->trans('signing_workflow.message.completed_title', locale: $lang),
-                    text: $this->translator->trans('signing_workflow.message.completed_text', ['%total%' => $total], locale: $lang),
-                ),
-            );
+        if ($action === self::ACTION_DELETE) {
+            return new WorkflowActionResult(internalState: $workflow->getInternalState(), delete: true);
         }
-
-        return new WorkflowActionResult(
-            internalState: $internalState,
-            message: new WorkflowMessage(
-                type: WorkflowMessage::TYPE_INFO,
-                title: $this->translator->trans('signing_workflow.message.pending_title', locale: $lang),
-                text: $this->translator->trans('signing_workflow.message.pending_text', ['%signed%' => $signed, '%total%' => $total], locale: $lang),
-            ),
-        );
+        throw new \RuntimeException(sprintf('Signing action "%s" is not implemented yet.', $action));
     }
 
     public function getExpectedTasks(WorkflowData $workflow): array
     {
-        if ($workflow->isActive()) {
-            return [$this->getTaskId($workflow)];
+        if (!$workflow->isActive() || ($workflow->getInternalState()['version'] ?? null) !== SigningWorkflowState::VERSION) {
+            return [];
         }
+        $iteration = SigningWorkflowState::fromArray($workflow->getInternalState())->getCurrentIteration();
 
-        return [];
+        return $iteration !== null ? [$iteration->invitees[0]->id] : [];
     }
 
     public function getTaskResponse(WorkflowData $workflow, string $taskId, string $lang): array
     {
-        if ($taskId !== $this->getTaskId($workflow)) {
-            throw new \RuntimeException(sprintf("Task '%s' does not belong to workflow '%s'.", $taskId, $workflow->getId()));
+        if (!in_array($taskId, $this->getExpectedTasks($workflow), true)) {
+            throw new NotFoundHttpException('Task does not belong to the current signing iteration.');
+        }
+        $state = SigningWorkflowState::fromArray($workflow->getInternalState());
+        $files = $this->helper->getFiles($workflow->getId());
+        $document = $state->getCurrentDocument();
+        $attachments = [];
+        foreach ($state->attachments as $attachment) {
+            $attachments[] = ['filename' => $attachment['filename'], 'url' => $files->createDownloadUrl($attachment['fileId'])];
         }
 
-        $documents = $workflow->getInternalState()['documents'] ?? [];
-
-        $result = [];
-        foreach ($documents as $doc) {
-            if ($doc['signed']) {
-                continue;
-            }
-            $result[] = [
-                'workflowTrackingId' => $taskId.'_'.$doc['id'],
-                'url' => $doc['url'],
-                'x' => $doc['x'],
-                'y' => $doc['y'],
-                'page' => $doc['page'],
-                'profile' => $doc['profile'],
-            ];
-        }
-
-        return ['documents' => $result];
+        return [
+            'documents' => [[
+                'workflowTrackingId' => $taskId,
+                'filename' => $document['filename'],
+                'url' => $files->createDownloadUrl($document['fileId']),
+            ]],
+            'attachments' => $attachments,
+        ];
     }
 
     public function getRenderResponse(WorkflowData $workflow, string $renderId, string $lang): RenderResult
     {
-        throw new \RuntimeException(sprintf("Workflow '%s' does not support rendering.", $workflow->getId()));
+        if ($renderId !== self::RENDER_DOCUMENT) {
+            throw new NotFoundHttpException('Unknown signing render ID.');
+        }
+        $document = SigningWorkflowState::fromArray($workflow->getInternalState())->getCurrentDocument();
+        $stream = $this->helper->getFiles($workflow->getId())->download($document['fileId'])->getFileStream();
+
+        return new RenderResult($stream->getContents(), 'application/pdf');
     }
 
     public function ping(WorkflowData $workflow): ?WorkflowActionResult
@@ -231,15 +284,8 @@ class SigningWorkflowTypeHandler implements WorkflowTypeHandlerInterface
 
     public function cleanup(WorkflowData $workflow): CleanupResult
     {
-        // No long-lived external session to cancel for this example handler —
-        // the signing service only holds a signed URL that expires on its own.
-        // A real implementation would cancel any pending signing session here
-        // and return CleanupResult(done: false, ...) until confirmation is received.
-        return new CleanupResult(done: true, internalState: $workflow->getInternalState());
-    }
+        $this->helper->getFiles($workflow->getId())->deleteAll();
 
-    private function getTaskId(WorkflowData $workflow): string
-    {
-        return $workflow->getInternalState()['taskId'];
+        return new CleanupResult(done: true, internalState: $workflow->getInternalState());
     }
 }

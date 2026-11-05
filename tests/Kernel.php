@@ -44,6 +44,7 @@ class Kernel extends BaseKernel
                     'other_user' => ['password_hash' => '$2y$12$szooYSPfMqDocxv3IxBY/.Nus5H3rM0WAM2KgMersPIpT5YSQTNby'],
                 ],
                 'processes' => [
+                    'process49' => ['admins' => ['svc_user']],
                     'foobar42' => [
                         'admins' => ['svc_user'],
                     ],

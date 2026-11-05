@@ -183,7 +183,7 @@ class WorkflowService implements LoggerAwareInterface
     public function handleAction(string $workflowId, string $action, array $payload, string $lang): WorkflowActionResult
     {
         $workflow = $this->em->getRepository(WorkflowPersistence::class)->find($workflowId);
-        if ($workflow === null) {
+        if ($workflow === null || $workflow->isDeleted()) {
             throw new NotFoundHttpException(sprintf("Workflow '%s' not found.", $workflowId));
         }
 
@@ -211,7 +211,11 @@ class WorkflowService implements LoggerAwareInterface
             $workflow->setUpdatedAt($now);
             $this->em->flush();
 
-            $this->reconcileTasks($workflow);
+            if ($result->getDelete()) {
+                $this->softDeleteWorkflow($workflow->getId());
+            } else {
+                $this->reconcileTasks($workflow);
+            }
         });
 
         return $result;
@@ -322,9 +326,14 @@ class WorkflowService implements LoggerAwareInterface
                     $this->applyClose($workflow, $result);
                     $workflow->setUpdatedAt($now);
                     $this->em->flush();
+                    if ($result->getDelete()) {
+                        $this->softDeleteWorkflow($workflow->getId());
+                    }
                 }
 
-                $this->reconcileTasks($workflow);
+                if (!$workflow->isDeleted()) {
+                    $this->reconcileTasks($workflow);
+                }
             });
         }
     }

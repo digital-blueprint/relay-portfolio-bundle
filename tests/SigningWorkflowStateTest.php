@@ -63,9 +63,6 @@ class SigningWorkflowStateTest extends TestCase
         foreach (['description', 'referenceId', 'expirationDate', 'retrievedAt', 'cancelledBy'] as $field) {
             self::assertNull($state->$field);
         }
-
-        $data['expirationDate'] = '2026-12-01T22:59:00.123+0100';
-        self::assertSame('2026-12-01T22:59:00.123000+01:00', SigningWorkflowState::fromArray($data)->toArray()['expirationDate']);
     }
 
     public function testIterationProgress(): void

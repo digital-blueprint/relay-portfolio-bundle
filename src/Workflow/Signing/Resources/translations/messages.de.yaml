@@ -1,12 +1,15 @@
 signing_workflow:
-    name: 'Signatur-Workflow'
-    description: 'Signieren Sie ein oder mehrere PDF-Dokumente über einen externen Signaturdienst.'
+    name: 'Arbeitsvertrag'
+    description: 'Signieren Sie ein PDF-Dokument in zwei Freigabeschritten.'
+    external_signer: 'Externe unterzeichnende Person: %signer%.'
     state:
         completed: 'Abgeschlossen'
-        completed_desc: 'Alle %total% Dokument(e) wurden signiert.'
+        completed_desc: 'Alle %total% Signatur(en) wurden abgeschlossen.'
         pending: 'Ausstehend'
-        pending_desc: '%signed% / %total% Dokument(e) signiert'
+        pending_desc: '%signed% / %total% Signatur(en) abgeschlossen'
     action:
+        view_document: 'Dokument ansehen'
+        delete: 'Workflow löschen (Test)'
         sign: 'Dokumente signieren'
         check: 'Signaturstatus prüfen'
         task: 'Aufgabe anzeigen'

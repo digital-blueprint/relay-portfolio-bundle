@@ -24,7 +24,7 @@ class SignJobDescription
      */
     public function __construct(
         private readonly SignUser $constituent,
-        private readonly string $positionType,
+        private readonly SignPositionType $positionType,
         private readonly array $iterationData,
         private readonly ?SignJobMetaData $metaData = null,
     ) {
@@ -35,7 +35,7 @@ class SignJobDescription
         return $this->constituent;
     }
 
-    public function getPositionType(): string
+    public function getPositionType(): SignPositionType
     {
         return $this->positionType;
     }
@@ -56,7 +56,7 @@ class SignJobDescription
     /**
      * Parses and validates a jobDescription from a decoded JSON array.
      *
-     * Requires a valid `constituent`, a non-empty `positionType` and at least one
+     * Requires a valid `constituent`, a supported `positionType` and at least one
      * `iterationData` entry. `metaData` is optional.
      *
      * @param array<string, mixed> $data
@@ -66,7 +66,12 @@ class SignJobDescription
     public static function fromArray(array $data): self
     {
         $constituent = SignUser::fromArray(SignUtils::requireArray($data, 'constituent'));
-        $positionType = SignUtils::requireString($data, 'positionType');
+        $positionTypeValue = SignUtils::requireString($data, 'positionType');
+        $positionType = SignPositionType::tryFrom($positionTypeValue);
+        if ($positionType === null) {
+            $valid = array_map(static fn (SignPositionType $type): string => $type->value, SignPositionType::cases());
+            throw new SignException(sprintf('The "positionType" field must be one of: %s.', implode(', ', $valid)));
+        }
 
         $rawIterations = SignUtils::requireArray($data, 'iterationData');
         if ($rawIterations === []) {

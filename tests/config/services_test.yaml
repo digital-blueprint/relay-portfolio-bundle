@@ -1,4 +1,8 @@
 services:
+    Dbp\Relay\BasePersonBundle\API\PersonProviderInterface:
+        synthetic: true
+        public: true
+
     Dbp\Relay\PortfolioBundle\Tests\DummyWorkflowTypeHandler:
         autoconfigure: true
 

@@ -7,7 +7,9 @@ namespace Dbp\Relay\PortfolioBundle\Tests\SignApi;
 use Dbp\Relay\PortfolioBundle\SignApi\SignCategory;
 use Dbp\Relay\PortfolioBundle\SignApi\SignException;
 use Dbp\Relay\PortfolioBundle\SignApi\SignJobDescription;
+use Dbp\Relay\PortfolioBundle\SignApi\SignPositionType;
 use Dbp\Relay\PortfolioBundle\SignApi\SignUserClass;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 class SignJobDescriptionTest extends TestCase
@@ -65,7 +67,7 @@ class SignJobDescriptionTest extends TestCase
 
         $this->assertSame('owner@example.com', $job->getConstituent()->getName());
         $this->assertSame(SignUserClass::USER, $job->getConstituent()->getClass());
-        $this->assertSame('SIGNATURE_PAGE', $job->getPositionType());
+        $this->assertSame(SignPositionType::SIGNATURE_PAGE, $job->getPositionType());
 
         $this->assertNotNull($job->getMetaData());
         $this->assertSame('CASE-123', $job->getMetaData()->getReferenceId());
@@ -112,6 +114,33 @@ class SignJobDescriptionTest extends TestCase
 
         $this->expectException(SignException::class);
         SignJobDescription::fromArray($data);
+    }
+
+    public function testParsesSignatureFieldPosition(): void
+    {
+        $data = $this->canonical();
+        $data['positionType'] = 'SIGNATURE_FIELD';
+
+        self::assertSame(SignPositionType::SIGNATURE_FIELD, SignJobDescription::fromArray($data)->getPositionType());
+    }
+
+    #[DataProvider('invalidPositionTypes')]
+    public function testInvalidPositionTypeThrows(mixed $positionType): void
+    {
+        $data = $this->canonical();
+        $data['positionType'] = $positionType;
+
+        $this->expectException(SignException::class);
+        SignJobDescription::fromArray($data);
+    }
+
+    public static function invalidPositionTypes(): iterable
+    {
+        yield 'unknown' => ['UNKNOWN'];
+        yield 'empty' => [''];
+        yield 'wrong case' => ['signature_page'];
+        yield 'null' => [null];
+        yield 'number' => [1];
     }
 
     public function testEmptyIterationDataThrows(): void

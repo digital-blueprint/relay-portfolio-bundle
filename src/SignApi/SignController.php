@@ -41,6 +41,12 @@ class SignController
             return $deny;
         }
 
+        foreach (array_keys($request->files->all()) as $field) {
+            if (!in_array($field, ['documentToSign', 'attachments'], true)) {
+                return $this->error(sprintf('Unsupported file part "%s".', $field), Response::HTTP_BAD_REQUEST);
+            }
+        }
+
         $jobDescriptionRaw = $request->request->get('jobDescription');
         if (!is_string($jobDescriptionRaw) || $jobDescriptionRaw === '') {
             return $this->error('The jobDescription part is required.', Response::HTTP_BAD_REQUEST);
@@ -155,7 +161,11 @@ class SignController
             return $this->error(sprintf("Job '%s' was not found.", $processInstanceId), Response::HTTP_NOT_FOUND);
         }
 
-        $pdf = $service->getDocument($processInstanceId);
+        try {
+            $pdf = $service->getDocument($processInstanceId);
+        } catch (SignException $e) {
+            return $this->error($e->getMessage(), $e->getStatusCode());
+        }
         if ($pdf === null) {
             return $this->error(
                 sprintf("No document is available for job '%s'.", $processInstanceId),

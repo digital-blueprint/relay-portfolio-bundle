@@ -30,7 +30,7 @@ final class SigningEmailResolver
         }
         $person = reset($persons);
         $personId = $person->getIdentifier();
-        if ($personId === null || $personId === '') {
+        if ($personId === null) {
             throw new \RuntimeException('Person lookup returned no identifier.');
         }
 

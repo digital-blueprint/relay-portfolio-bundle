@@ -4,418 +4,335 @@ declare(strict_types=1);
 
 namespace Dbp\Relay\PortfolioBundle\Tests;
 
-use Dbp\Relay\PortfolioBundle\Handler\Action;
+use Dbp\Relay\BasePersonBundle\API\PersonProviderInterface;
+use Dbp\Relay\BasePersonBundle\Entity\Person;
 use Dbp\Relay\PortfolioBundle\Handler\WorkflowData;
 use Dbp\Relay\PortfolioBundle\Persistence\WorkflowPersistence;
+use Dbp\Relay\PortfolioBundle\Service\WorkflowFileService;
 use Dbp\Relay\PortfolioBundle\Service\WorkflowService;
+use Dbp\Relay\PortfolioBundle\SignApi\SignController;
+use Dbp\Relay\PortfolioBundle\SignApi\SignJobState;
 use Dbp\Relay\PortfolioBundle\Workflow\Signing\SigningWorkflowTypeHandler;
+use Dbp\Relay\PortfolioBundle\Workflow\Signing\SignService;
+use Dbp\Relay\PortfolioBundle\Workflow\Signing\State\SigningWorkflowState;
+use PHPUnit\Framework\Attributes\DataProvider;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
+use Symfony\Component\Uid\Uuid;
 
 class SigningWorkflowTest extends AbstractTestCase
 {
-    private WorkflowService $service;
-    private SigningWorkflowTypeHandler $handler;
-
-    /**
-     * Caller-supplied input — no taskId, no signed flag; those are set by create().
-     *
-     * @var array<int, array{url: string, x: int, y: int, page: int}>
-     */
-    private array $twoDocumentInput = [
-        ['url' => 'https://example.com/doc1.pdf', 'x' => 100, 'y' => 200, 'page' => 1, 'profile' => 'official'],
-        ['url' => 'https://example.com/doc2.pdf', 'x' => 50, 'y' => 300, 'page' => 2, 'profile' => 'official'],
-    ];
+    private WorkflowService $workflows;
+    private SignService $sign;
+    private SignController $controller;
+    private ?string $currentPersonId = 'owner-id';
+    private bool $lookupFails = false;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = $this->container->get(WorkflowService::class);
-        $this->handler = $this->container->get(SigningWorkflowTypeHandler::class);
-    }
-
-    // -------------------------------------------------------------------------
-    // Helpers
-    // -------------------------------------------------------------------------
-
-    private function toWorkflowData(WorkflowPersistence $workflow): WorkflowData
-    {
-        return new WorkflowData(
-            $workflow->getId(),
-            $workflow->getType(),
-            $workflow->isActive(),
-            $workflow->getInternalState(),
-            $workflow->getCreatedAt() ?? new \DateTimeImmutable(),
-        );
-    }
-
-    /**
-     * Builds a raw internalState as create() would produce it, for use with
-     * addWorkflow() in tests that need to bypass create() (e.g. to pre-set signed flags).
-     *
-     * @param array<int, array{url: string, x: int, y: int, page: int, signed: bool}> $documents
-     *
-     * @return array<string, mixed>
-     */
-    private function buildInternalState(string $taskId, array $documents): array
-    {
-        return [
-            'taskId' => $taskId,
-            'documents' => $documents,
-        ];
-    }
-
-    // -------------------------------------------------------------------------
-    // create() — unit tests on the handler directly
-    // -------------------------------------------------------------------------
-
-    public function testCreateGeneratesTaskId(): void
-    {
-        $state = $this->handler->create('wf-signing', ['documents' => $this->twoDocumentInput]);
-
-        $this->assertArrayHasKey('taskId', $state);
-        $this->assertNotEmpty($state['taskId']);
-    }
-
-    public function testCreateSetsSignedFalse(): void
-    {
-        $state = $this->handler->create('wf-signing', ['documents' => $this->twoDocumentInput]);
-
-        foreach ($state['documents'] as $doc) {
-            $this->assertFalse($doc['signed']);
-        }
-    }
-
-    public function testCreateGeneratesPerDocumentIds(): void
-    {
-        $state = $this->handler->create('wf-signing', ['documents' => $this->twoDocumentInput]);
-
-        foreach ($state['documents'] as $doc) {
-            // Stored id is a bare UUID; the taskId prefix is added on-the-fly in getTaskResponse()
-            $this->assertArrayHasKey('id', $doc);
-            $this->assertMatchesRegularExpression('/^[0-9a-f\-]{36}$/', $doc['id']);
-        }
-
-        // Each document gets a unique id
-        $ids = array_column($state['documents'], 'id');
-        $this->assertSame(count($ids), count(array_unique($ids)));
-    }
-
-    public function testCreatePreservesDocumentFields(): void
-    {
-        $state = $this->handler->create('wf-signing', ['documents' => $this->twoDocumentInput]);
-        $docs = $state['documents'];
-
-        $this->assertSame('https://example.com/doc1.pdf', $docs[0]['url']);
-        $this->assertSame(100, $docs[0]['x']);
-        $this->assertSame(200, $docs[0]['y']);
-        $this->assertSame(1, $docs[0]['page']);
-    }
-
-    public function testCreateProducesUniqueTaskIds(): void
-    {
-        $state1 = $this->handler->create('wf-signing', ['documents' => $this->twoDocumentInput]);
-        $state2 = $this->handler->create('wf-signing', ['documents' => $this->twoDocumentInput]);
-
-        $this->assertNotSame($state1['taskId'], $state2['taskId']);
-    }
-
-    // -------------------------------------------------------------------------
-    // Workflow creation via WorkflowService
-    // -------------------------------------------------------------------------
-
-    public function testCreateWorkflowIsActive(): void
-    {
-        $workflow = $this->service->createWorkflow(
-            SigningWorkflowTypeHandler::TYPE,
-            ['documents' => $this->twoDocumentInput],
-        );
-
-        $this->assertTrue($workflow->isActive());
-        $this->assertSame(SigningWorkflowTypeHandler::TYPE, $workflow->getType());
-    }
-
-    public function testCreateWorkflowStoresTaskIdInInternalState(): void
-    {
-        $workflow = $this->service->createWorkflow(
-            SigningWorkflowTypeHandler::TYPE,
-            ['documents' => $this->twoDocumentInput],
-        );
-
-        $this->assertArrayHasKey('taskId', $workflow->getInternalState());
-    }
-
-    public function testCreateWorkflowCreatesSingleTask(): void
-    {
-        $workflow = $this->service->createWorkflow(
-            SigningWorkflowTypeHandler::TYPE,
-            ['documents' => $this->twoDocumentInput],
-        );
-
-        $taskId = $workflow->getInternalState()['taskId'];
-        $tasks = $this->service->getTasksForWorkflow($workflow->getId(), 1, 10);
-
-        $this->assertCount(1, $tasks);
-        $this->assertSame($taskId, $tasks[0]->getId());
-    }
-
-    // -------------------------------------------------------------------------
-    // Task response
-    // -------------------------------------------------------------------------
-
-    public function testTaskResponseContainsAllDocuments(): void
-    {
-        $workflow = $this->service->createWorkflow(
-            SigningWorkflowTypeHandler::TYPE,
-            ['documents' => $this->twoDocumentInput],
-        );
-
-        $taskId = $workflow->getInternalState()['taskId'];
-        $task = $this->service->getTask($taskId);
-        $this->assertNotNull($task);
-
-        $data = $this->service->getTaskResponse($task, 'en');
-
-        $this->assertArrayHasKey('documents', $data);
-        $this->assertCount(2, $data['documents']);
-    }
-
-    public function testTaskResponseDocumentFields(): void
-    {
-        $workflow = $this->service->createWorkflow(
-            SigningWorkflowTypeHandler::TYPE,
-            ['documents' => $this->twoDocumentInput],
-        );
-
-        $taskId = $workflow->getInternalState()['taskId'];
-        $task = $this->service->getTask($taskId);
-        $this->assertNotNull($task);
-        $docs = $this->service->getTaskResponse($task, 'en')['documents'];
-
-        $taskId = $workflow->getInternalState()['taskId'];
-
-        $this->assertStringStartsWith($taskId.'_', $docs[0]['workflowTrackingId']);
-        $this->assertSame('https://example.com/doc1.pdf', $docs[0]['url']);
-        $this->assertSame(100, $docs[0]['x']);
-        $this->assertSame(200, $docs[0]['y']);
-        $this->assertSame(1, $docs[0]['page']);
-        $this->assertArrayNotHasKey('signed', $docs[0]);
-
-        $this->assertStringStartsWith($taskId.'_', $docs[1]['workflowTrackingId']);
-        $this->assertSame('https://example.com/doc2.pdf', $docs[1]['url']);
-        $this->assertSame(50, $docs[1]['x']);
-        $this->assertSame(300, $docs[1]['y']);
-        $this->assertSame(2, $docs[1]['page']);
-        $this->assertArrayNotHasKey('signed', $docs[1]);
-    }
-
-    public function testTaskResponseExcludesSignedDocuments(): void
-    {
-        $workflow = $this->testEntityManager->addWorkflow(
-            'wf-partial',
-            SigningWorkflowTypeHandler::TYPE,
-            active: true,
-            internalState: $this->buildInternalState('task-uuid-partial', [
-                ['id' => 'doc-uuid-1', 'url' => 'https://example.com/doc1.pdf', 'x' => 100, 'y' => 200, 'page' => 1, 'signed' => true, 'profile' => 'official'],
-                ['id' => 'doc-uuid-2', 'url' => 'https://example.com/doc2.pdf', 'x' => 50, 'y' => 300, 'page' => 2, 'signed' => false, 'profile' => 'official'],
-            ]),
-        );
-        $this->testEntityManager->addTask('task-uuid-partial', $workflow);
-
-        $task = $this->service->getTask('task-uuid-partial');
-        $this->assertNotNull($task);
-        $docs = $this->service->getTaskResponse($task, 'en')['documents'];
-
-        // Only the unsigned document is returned
-        $this->assertCount(1, $docs);
-        $this->assertSame('task-uuid-partial_doc-uuid-2', $docs[0]['workflowTrackingId']);
-        $this->assertArrayNotHasKey('signed', $docs[0]);
-    }
-
-    // -------------------------------------------------------------------------
-    // Sign action
-    // -------------------------------------------------------------------------
-
-    public function testSignActionIsTypeAction(): void
-    {
-        $workflow = $this->service->createWorkflow(
-            SigningWorkflowTypeHandler::TYPE,
-            ['documents' => $this->twoDocumentInput],
-        );
-
-        $actions = $this->handler->getAvailableActions($this->toWorkflowData($workflow), 'en');
-
-        $signAction = null;
-        foreach ($actions as $action) {
-            if ($action->getId() === SigningWorkflowTypeHandler::ACTION_SIGN) {
-                $signAction = $action;
-                break;
+        $provider = $this->createMock(PersonProviderInterface::class);
+        $provider->method('getCurrentPersonIdentifier')->willReturnCallback(fn (): ?string => $this->currentPersonId);
+        $provider->method('getPersons')->willReturnCallback(function (int $page, int $limit, array $options): array {
+            if ($this->lookupFails) {
+                throw new \RuntimeException('Directory failed');
             }
+            $persons = [];
+            foreach (['owner' => 'Owner', 'approver' => 'Approver'] as $account => $givenName) {
+                if ($options['filter']->apply(['localData.email' => $account.'@example.com'])) {
+                    $person = new Person();
+                    $person->setIdentifier($account.'-id');
+                    $person->setGivenName($givenName);
+                    $person->setFamilyName('Example');
+                    $persons[] = $person;
+                }
+            }
+
+            return $persons;
+        });
+        $this->container->set(PersonProviderInterface::class, $provider);
+        $this->workflows = $this->container->get(WorkflowService::class);
+        $this->sign = $this->container->get(SignService::class);
+        $this->controller = $this->container->get(SignController::class);
+    }
+
+    private function request(?array $job = null, array $files = []): Request
+    {
+        $request = new Request(
+            request: ['jobDescription' => json_encode($job ?? SigningTestUtils::jobDescription(), JSON_THROW_ON_ERROR)],
+            files: $files ?: ['documentToSign' => SigningTestUtils::pdf()],
+        );
+        $request->headers->set('Authorization', 'Basic '.base64_encode('svc_user:svc_pass'));
+
+        return $request;
+    }
+
+    private function create(): WorkflowPersistence
+    {
+        $response = $this->controller->startProcess('process49', $this->request());
+        self::assertSame(201, $response->getStatusCode(), (string) $response->getContent());
+
+        return $this->workflows->getWorkflow((string) $response->getContent());
+    }
+
+    private function data(WorkflowPersistence $workflow): WorkflowData
+    {
+        return new WorkflowData($workflow->getId(), $workflow->getType(), $workflow->isActive(), $workflow->getInternalState(), $workflow->getCreatedAt());
+    }
+
+    private function assertNothingCreated(): void
+    {
+        self::assertSame([], $this->workflows->getWorkflows(0, 10));
+        $blob = $this->container->get('dbp.relay.portfolio.blob_api');
+        self::assertSame([], iterator_to_array($blob->getFiles(1, 10)));
+        self::assertSame(0, (int) $this->container->get('doctrine.orm.dbp_relay_portfolio_bundle_entity_manager')->getConnection()->fetchOne('SELECT COUNT(*) FROM portfolio_tasks'));
+    }
+
+    public function testCreatesWorkflowAndOwnsUploadedFiles(): void
+    {
+        $job = SigningTestUtils::jobDescription();
+        $job['metaData'] = ['description' => 'Please sign', 'referenceId' => 'CASE-123', 'expirationDate' => '2000-01-01T12:00:00.000+0100'];
+        $response = $this->controller->startProcess('process49', $this->request($job, [
+            'documentToSign' => SigningTestUtils::pdf('work-contract.pdf'),
+            'attachments' => [SigningTestUtils::pdf('supporting.pdf')],
+        ]));
+        self::assertSame(201, $response->getStatusCode(), (string) $response->getContent());
+        self::assertStringStartsWith('text/plain', $response->headers->get('Content-Type'));
+        $id = (string) $response->getContent();
+        self::assertTrue(Uuid::isValid($id));
+        $workflow = $this->workflows->getWorkflow($id);
+        $state = SigningWorkflowState::fromArray($workflow->getInternalState());
+        self::assertTrue($workflow->isActive());
+        self::assertSame('owner-id', $state->constituentUserId);
+        self::assertSame('Owner Example', $state->constituentDisplayName);
+        self::assertSame('approver-id', $state->iterations[0]->invitees[0]->userId);
+        self::assertSame('Approver Example', $state->iterations[0]->invitees[0]->displayName);
+        self::assertNull($state->iterations[1]->invitees[0]->userId);
+        self::assertSame('Guest', $state->iterations[1]->invitees[0]->displayName);
+        self::assertSame('CASE-123', $state->referenceId);
+        self::assertSame('2000', $state->expirationDate->format('Y'));
+        $files = $this->container->get(WorkflowFileService::class);
+        foreach ([$state->documentToSignFileId => 'work-contract.pdf', $state->attachments[0]['fileId'] => 'supporting.pdf'] as $fileId => $filename) {
+            $file = $files->get($id, $fileId);
+            self::assertSame('portfolio/workflows/'.$id, $file->getPrefix());
+            self::assertSame($filename, $file->getFileName());
+            self::assertSame('application/pdf', $file->getMimeType());
+            self::assertSame(file_get_contents(SigningTestUtils::pdf()->getPathname()), $files->download($id, $fileId)->getFileStream()->getContents());
         }
-
-        $this->assertNotNull($signAction);
-        $this->assertSame(Action::TYPE_ACTION, $signAction->getType());
+        $task = $this->workflows->getTask($state->iterations[0]->invitees[0]->id);
+        self::assertNotNull($task);
+        self::assertNull($this->workflows->getTask($state->iterations[1]->invitees[0]->id));
+        self::assertTrue(Uuid::isValid($state->iterations[1]->invitees[0]->id));
+        self::assertNotSame($state->iterations[0]->invitees[0]->id, $state->iterations[1]->invitees[0]->id);
+        $taskData = $this->workflows->getTaskResponse($task, 'en');
+        self::assertCount(1, $taskData['documents']);
+        self::assertCount(1, $taskData['attachments']);
+        self::assertSame('work-contract.pdf', $taskData['documents'][0]['filename']);
+        self::assertStringStartsWith('http', $taskData['documents'][0]['url']);
+        self::assertStringStartsWith('http', $taskData['attachments'][0]['url']);
     }
 
-    public function testSignActionReturnsUrlContainingTaskId(): void
+    public function testPollingReadsPersistedState(): void
     {
-        $workflow = $this->service->createWorkflow(
-            SigningWorkflowTypeHandler::TYPE,
-            ['documents' => $this->twoDocumentInput],
-        );
-
-        $taskId = $workflow->getInternalState()['taskId'];
-        $result = $this->handler->handleAction($this->toWorkflowData($workflow), SigningWorkflowTypeHandler::ACTION_SIGN, [], 'en');
-
-        $this->assertNull($result->getMessage());
-        $this->assertNotNull($result->getUrl());
-        $this->assertStringStartsWith(SigningWorkflowTypeHandler::SIGNING_SERVICE_URL, $result->getUrl());
-        $this->assertStringContainsString($taskId, $result->getUrl());
+        $id = $this->create()->getId();
+        $em = $this->container->get('doctrine.orm.dbp_relay_portfolio_bundle_entity_manager');
+        $em->clear();
+        self::assertSame('process49', $this->sign->resolveProcessId($id));
+        self::assertSame(SignJobState::ACTIVE, (new SignService($this->workflows))->getJobState($id, 'EMAIL')->getState());
+        $workflow = $this->workflows->getWorkflow($id);
+        $state = SigningWorkflowState::fromArray($workflow->getInternalState());
+        $state->status = SignJobState::FINISHED_FAILED;
+        $workflow->setInternalState($state->toArray());
+        $em->flush();
+        self::assertSame(['state' => 'FINISHED_FAILED'], json_decode($this->controller->getJobState($id, 'EMAIL', $this->request())->getContent(), true));
+        self::assertSame(400, $this->controller->getJobState($id, 'ID', $this->request())->getStatusCode());
+        self::assertNull($this->sign->resolveProcessId(Uuid::v4()->toRfc4122()));
+        $other = $this->workflows->createWorkflow('dummy', []);
+        self::assertNull($this->sign->resolveProcessId($other->getId()));
+        $state->signingProcessId = 'another-process';
+        $workflow->setInternalState($state->toArray());
+        $em->flush();
+        self::assertNull($this->sign->resolveProcessId($id));
     }
 
-    public function testCheckActionIsAvailableWhileActive(): void
+    public function testViewDocumentUsesCurrentPdfWithoutChangingSigningState(): void
     {
-        $workflow = $this->service->createWorkflow(
-            SigningWorkflowTypeHandler::TYPE,
-            ['documents' => $this->twoDocumentInput],
-        );
+        $workflow = $this->create();
+        $state = $workflow->getInternalState();
+        $result = $this->workflows->handleAction($workflow->getId(), SigningWorkflowTypeHandler::ACTION_VIEW_DOCUMENT, [], 'en');
+        self::assertTrue($this->container->get(\Symfony\Component\HttpFoundation\UriSigner::class)->check($result->getUrl()));
+        self::assertSame($state, $workflow->getInternalState());
+        $render = $this->workflows->getRenderResponse($workflow, SigningWorkflowTypeHandler::RENDER_DOCUMENT, 'en');
+        self::assertSame('application/pdf', $render->getContentType());
+        self::assertSame(SigningTestUtils::pdf()->getContent(), $render->getHtml());
 
-        $actions = $this->handler->getAvailableActions($this->toWorkflowData($workflow), 'en');
-        $ids = array_map(fn (Action $a) => $a->getId(), $actions);
-
-        $this->assertContains(SigningWorkflowTypeHandler::ACTION_CHECK, $ids);
+        $signedPdf = "%PDF-1.4\n%Signed contract\n%%EOF";
+        $fileId = $this->container->get(WorkflowFileService::class)->store($workflow->getId(), 'signed.pdf', 'application/pdf', $signedPdf);
+        $state = SigningWorkflowState::fromArray($state);
+        $state->iterations[0]->signedDocumentFileId = $fileId;
+        $workflow->setInternalState($state->toArray());
+        self::assertSame($signedPdf, $this->workflows->getRenderResponse($workflow, SigningWorkflowTypeHandler::RENDER_DOCUMENT, 'en')->getHtml());
     }
 
-    public function testNoActionsWhenClosed(): void
+    #[DataProvider('deletableStates')]
+    public function testDeleteActionHidesWorkflowAndCleansUpFiles(bool $closed): void
     {
-        $workflow = $this->testEntityManager->addWorkflow(
-            'wf-closed',
-            SigningWorkflowTypeHandler::TYPE,
-            active: false,
-            internalState: $this->buildInternalState('task-uuid-done', [
-                ['id' => 'doc-uuid-1', 'url' => 'https://example.com/doc1.pdf', 'x' => 100, 'y' => 200, 'page' => 1, 'signed' => true],
-            ]),
-        );
+        $response = $this->controller->startProcess('process49', $this->request(files: [
+            'documentToSign' => SigningTestUtils::pdf(),
+            'attachments' => [SigningTestUtils::pdf('supporting.pdf')],
+        ]));
+        self::assertSame(201, $response->getStatusCode());
+        $workflow = $this->workflows->getWorkflow((string) $response->getContent());
+        $taskId = SigningWorkflowState::fromArray($workflow->getInternalState())->iterations[0]->invitees[0]->id;
+        if ($closed) {
+            $workflow->close();
+        }
+        $em = $this->container->get('doctrine.orm.dbp_relay_portfolio_bundle_entity_manager');
+        $em->flush();
+        $handler = $this->container->get(SigningWorkflowTypeHandler::class);
+        $data = $this->data($workflow);
+        self::assertContains(SigningWorkflowTypeHandler::ACTION_DELETE, array_map(static fn ($action): string => $action->getId(), $handler->getAvailableActions($data, 'en')));
 
-        $this->assertSame([], $this->handler->getAvailableActions($this->toWorkflowData($workflow), 'en'));
+        $this->workflows->handleAction($workflow->getId(), SigningWorkflowTypeHandler::ACTION_DELETE, [], 'en');
+        self::assertTrue($workflow->isDeleted());
+        self::assertNull($this->workflows->getWorkflow($workflow->getId()));
+        self::assertNull($this->workflows->getTask($taskId));
+        self::assertNull($this->sign->resolveProcessId($workflow->getId()));
+        $this->workflows->cleanupAll();
+        self::assertNull($em->find(WorkflowPersistence::class, $workflow->getId()));
+        $this->assertNothingCreated();
     }
 
-    // -------------------------------------------------------------------------
-    // Check action — none signed
-    // -------------------------------------------------------------------------
-
-    public function testCheckWhenNoneSigned(): void
+    public static function deletableStates(): iterable
     {
-        $workflow = $this->service->createWorkflow(
-            SigningWorkflowTypeHandler::TYPE,
-            ['documents' => $this->twoDocumentInput],
-        );
-
-        $result = $this->service->handleAction(
-            $workflow->getId(),
-            SigningWorkflowTypeHandler::ACTION_CHECK,
-            [],
-            'en',
-        );
-
-        // null close = no transition; workflow stays active
-        $this->assertNull($result->getClose());
-        $this->assertNotNull($result->getMessage());
-        $this->assertStringContainsString('0 / 2', $result->getMessage()->getText());
+        yield 'active' => [false];
+        yield 'closed' => [true];
     }
 
-    // -------------------------------------------------------------------------
-    // Check action — all signed → closes workflow
-    // -------------------------------------------------------------------------
-
-    public function testCheckWhenAllSignedClosesWorkflow(): void
+    public function testCannotDeleteWorkflowTwice(): void
     {
-        // Use addWorkflow() to inject a state where both docs are already signed
-        $workflow = $this->testEntityManager->addWorkflow(
-            'wf-signing',
-            SigningWorkflowTypeHandler::TYPE,
-            active: true,
-            internalState: $this->buildInternalState('task-uuid-1', [
-                ['id' => 'doc-uuid-1', 'url' => 'https://example.com/doc1.pdf', 'x' => 100, 'y' => 200, 'page' => 1, 'signed' => true],
-                ['id' => 'doc-uuid-2', 'url' => 'https://example.com/doc2.pdf', 'x' => 50, 'y' => 300, 'page' => 2, 'signed' => true],
-            ]),
-        );
-        // Add the task that getExpectedTasks() expects to already exist
-        $this->testEntityManager->addTask('task-uuid-1', $workflow);
+        $workflow = $this->create();
+        $this->workflows->handleAction($workflow->getId(), SigningWorkflowTypeHandler::ACTION_DELETE, [], 'en');
 
-        $result = $this->service->handleAction(
-            $workflow->getId(),
-            SigningWorkflowTypeHandler::ACTION_CHECK,
-            [],
-            'en',
-        );
-
-        $this->assertTrue($result->getClose());
-        $this->assertNotNull($result->getMessage());
-
-        $persisted = $this->service->getWorkflow($workflow->getId());
-        $this->assertNotNull($persisted);
-        $this->assertFalse($persisted->isActive());
-        $this->assertNotNull($persisted->getClosedAt());
+        $this->expectException(NotFoundHttpException::class);
+        $this->workflows->handleAction($workflow->getId(), SigningWorkflowTypeHandler::ACTION_DELETE, [], 'en');
     }
 
-    public function testTaskDeletedAfterClose(): void
+    public function testVisibilityUsesPersonIds(): void
     {
-        $workflow = $this->testEntityManager->addWorkflow(
-            'wf-signing-2',
-            SigningWorkflowTypeHandler::TYPE,
-            active: true,
-            internalState: $this->buildInternalState('task-uuid-2', [
-                ['id' => 'doc-uuid-1', 'url' => 'https://example.com/doc1.pdf', 'x' => 100, 'y' => 200, 'page' => 1, 'signed' => true],
-            ]),
-        );
-        $this->testEntityManager->addTask('task-uuid-2', $workflow);
-
-        $tasksBefore = $this->service->getTasksForWorkflow($workflow->getId(), 1, 10);
-        $this->assertCount(1, $tasksBefore);
-
-        $this->service->handleAction(
-            $workflow->getId(),
-            SigningWorkflowTypeHandler::ACTION_CHECK,
-            [],
-            'en',
-        );
-
-        // getExpectedTasks() returns [] for closed state → task removed by reconciliation
-        $tasksAfter = $this->service->getTasksForWorkflow($workflow->getId(), 1, 10);
-        $this->assertCount(0, $tasksAfter);
+        $workflow = $this->create();
+        foreach (['owner-id' => true, 'approver-id' => true, 'guest@example.com' => false, 'unrelated-id' => false] as $personId => $allowed) {
+            $this->currentPersonId = $personId;
+            self::assertSame($allowed, $this->workflows->canUse($workflow));
+        }
+        $this->currentPersonId = null;
+        self::assertFalse($this->workflows->canUse($workflow));
     }
 
-    // -------------------------------------------------------------------------
-    // Status display
-    // -------------------------------------------------------------------------
-
-    public function testStatusDisplayWhileActive(): void
+    public function testTasksFollowTheCurrentIterationWithoutClosingOnSuccess(): void
     {
-        $workflow = $this->service->createWorkflow(
-            SigningWorkflowTypeHandler::TYPE,
-            ['documents' => $this->twoDocumentInput],
-        );
-
-        $display = $this->handler->getStatusDisplay($this->toWorkflowData($workflow), 'en');
-
-        $this->assertSame('Pending', $display->getLabel());
-        $this->assertStringContainsString('0 / 2', $display->getDescription());
+        $workflow = $this->create();
+        $state = SigningWorkflowState::fromArray($workflow->getInternalState());
+        $firstTask = $state->iterations[0]->invitees[0]->id;
+        $secondTask = $state->iterations[1]->invitees[0]->id;
+        $state->iterations[0]->signedDocumentFileId = $state->documentToSignFileId;
+        $workflow->setInternalState($state->toArray());
+        $this->container->get('doctrine.orm.dbp_relay_portfolio_bundle_entity_manager')->flush();
+        $this->workflows->pingAll();
+        self::assertNull($this->workflows->getTask($firstTask));
+        self::assertNotNull($this->workflows->getTask($secondTask));
+        $state->iterations[1]->signedDocumentFileId = $state->documentToSignFileId;
+        $state->status = SignJobState::FINISHED_SUCCESS;
+        $workflow->setInternalState($state->toArray());
+        $this->container->get('doctrine.orm.dbp_relay_portfolio_bundle_entity_manager')->flush();
+        $this->workflows->pingAll();
+        self::assertNull($this->workflows->getTask($secondTask));
+        self::assertTrue($workflow->isActive());
+        self::assertSame(SignJobState::FINISHED_SUCCESS, $this->sign->getJobState($workflow->getId(), 'EMAIL')->getState());
     }
 
-    public function testStatusDisplayWhenClosed(): void
+    #[DataProvider('invalidJobs')]
+    public function testInvalidRequestsLeaveNoWorkflowOrFiles(array $path, mixed $value): void
     {
-        $workflow = $this->testEntityManager->addWorkflow(
-            'wf-closed-display',
-            SigningWorkflowTypeHandler::TYPE,
-            active: false,
-            internalState: $this->buildInternalState('task-uuid-closed-display', [
-                ['id' => 'doc-uuid-1', 'url' => 'https://example.com/doc1.pdf', 'x' => 100, 'y' => 200, 'page' => 1, 'signed' => true],
-                ['id' => 'doc-uuid-2', 'url' => 'https://example.com/doc2.pdf', 'x' => 50, 'y' => 300, 'page' => 2, 'signed' => true],
-            ]),
-        );
+        $job = SigningTestUtils::jobDescription();
+        $target = &$job;
+        foreach ($path as $key) {
+            $target = &$target[$key];
+        }
+        $target = $value;
+        unset($target);
+        self::assertSame(400, $this->controller->startProcess('process49', $this->request($job))->getStatusCode());
+        $this->assertNothingCreated();
+    }
 
-        $display = $this->handler->getStatusDisplay($this->toWorkflowData($workflow), 'en');
+    public static function invalidJobs(): iterable
+    {
+        yield 'unsupported signing category' => [['iterationData', 0, 'category'], 'QSIG'];
+        yield 'unknown owner' => [['constituent', 'name'], 'unknown@example.com'];
+        yield 'unknown internal signer' => [['iterationData', 0, 'invitees', 0, 'name'], 'unknown@example.com'];
+    }
 
-        $this->assertSame('Completed', $display->getLabel());
-        $this->assertStringContainsString('2', $display->getDescription());
+    public function testRejectsUnsupportedFileParts(): void
+    {
+        foreach ([
+            ['documentToSign' => [SigningTestUtils::pdf(), SigningTestUtils::pdf()]],
+            ['documentToSign' => SigningTestUtils::pdf(), 'attachments' => [[SigningTestUtils::pdf()]]],
+            ['documentToSign' => SigningTestUtils::pdf(), 'secondDocument' => SigningTestUtils::pdf()],
+        ] as $files) {
+            self::assertSame(400, $this->controller->startProcess('process49', $this->request(files: $files))->getStatusCode());
+            $this->assertNothingCreated();
+        }
+    }
+
+    public function testAcceptsAnUnbracketedSingleAttachment(): void
+    {
+        self::assertSame(201, $this->controller->startProcess('process49', $this->request(files: [
+            'documentToSign' => SigningTestUtils::pdf(), 'attachments' => SigningTestUtils::pdf('attachment.pdf'),
+        ]))->getStatusCode());
+    }
+
+    public function testRejectsNonPdfBeforeUploadingAnything(): void
+    {
+        $path = tempnam(sys_get_temp_dir(), 'not-pdf-');
+        file_put_contents($path, 'Not a PDF');
+        try {
+            $upload = new UploadedFile($path, 'bad.pdf', 'application/pdf', null, true);
+            self::assertSame(400, $this->controller->startProcess('process49', $this->request(files: [
+                'documentToSign' => SigningTestUtils::pdf(), 'attachments' => [$upload],
+            ]))->getStatusCode());
+            $this->assertNothingCreated();
+        } finally {
+            unlink($path);
+        }
+    }
+
+    public function testDirectoryFailurePropagatesWithoutCreatingAnything(): void
+    {
+        $this->lookupFails = true;
+        try {
+            $this->controller->startProcess('process49', $this->request());
+            self::fail('Directory failure should propagate.');
+        } catch (\RuntimeException $error) {
+            self::assertSame('Directory failed', $error->getMessage());
+        }
+        $this->assertNothingCreated();
+    }
+
+    public function testNoDummyCompletionOrDocumentAndCleanupRemovesFiles(): void
+    {
+        $workflow = $this->create();
+        self::assertSame(404, $this->controller->getDocument($workflow->getId(), $this->request())->getStatusCode());
+        $cancel = new Request(content: json_encode(SigningTestUtils::jobDescription()['constituent']));
+        $cancel->headers->set('Authorization', 'Basic '.base64_encode('svc_user:svc_pass'));
+        self::assertSame(501, $this->controller->cancelJob($workflow->getId(), $cancel)->getStatusCode());
+        self::assertSame(SignJobState::ACTIVE, $this->sign->getJobState($workflow->getId(), 'EMAIL')->getState());
+        $handler = $this->container->get(SigningWorkflowTypeHandler::class);
+        self::assertSame([SigningWorkflowTypeHandler::ACTION_DELETE, SigningWorkflowTypeHandler::ACTION_VIEW_DOCUMENT], array_map(static fn ($action): string => $action->getId(), $handler->getAvailableActions($this->data($workflow), 'en')));
+        self::assertStringContainsString('0 / 2', $handler->getStatusDisplay($this->data($workflow), 'en')->getDescription());
+        $this->workflows->softDeleteWorkflow($workflow->getId());
+        self::assertNull($this->sign->resolveProcessId($workflow->getId()));
+        $this->workflows->cleanupAll();
+        $this->assertNothingCreated();
     }
 }
